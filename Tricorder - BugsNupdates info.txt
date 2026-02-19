@@ -1,16 +1,7 @@
-Known Issues: v0.35.1
-
-Compass Size/Position
+Current Version:  v0.35.2
+Known Issues:
 Compass Jitter
-DB Meter LED Scale
 
-
-Desired Updates:
-
-Atmo:
-Long Press "D" to cycle kPa -> inHg
-Long Press "R" to cycle F* -> C*
-Add Dew Point
-
-Nav:
+Nav Function:
 Long Press "R" to cycle DMS -> DD
+
