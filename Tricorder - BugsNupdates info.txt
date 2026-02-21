@@ -1,4 +1,4 @@
-Current Version:  v0.35.2
+Current Version:  v0.35.3
 Known Issues:
 
 
@@ -6,5 +6,6 @@ Upcoming Additions:
 
 LED functions
 UV / IR / White 
+
 
 
