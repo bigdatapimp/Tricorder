@@ -5,11 +5,8 @@
 // -- environmental elements as well as location and direction. It is loosely based on the Tricorder concept from the Star Trek 
 // -- franchise.
 // --
-// -- Minor UI updates for menu and display issues. 
-// -- Added ability to switch between F and C for temp. 
-// -- Added ability to switch between
-// -- inHg and kPa for air pressure.
-// -- Updated LED for dB Meter to change based on dB instead of Raw samples.
+// -- Added ability to switch between Degrees* Minutes' Seconds"(DMS) and Decimal Degrees (DD)
+// -- Improved Compass handling
 */
 
 #include <Arduino_HS300x.h>
