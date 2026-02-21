@@ -1,11 +1,10 @@
 Current Version:  v0.35.2
 Known Issues:
-Compass Jitter
+
 
 Upcoming Additions:
 
-
-Nav Function:
-Long Press "R" to cycle DMS -> DD
+LED functions
+UV / IR / White 
 
 
