@@ -1064,32 +1064,22 @@ void IrSend(int pressType) {
   uint8_t vup_Command = 0x2;
   uint16_t vdn_Address = 0x4;
   uint8_t vdn_Command = 0x3;
-  
-  // --- New Options ---
   uint16_t ok_Address = 0x4;
   uint8_t ok_Command = 0x5A;
-  
   uint16_t dlt_Address = 0x4;
-  uint8_t dlt_Command = 0x58;
-  
+  uint8_t dlt_Command = 0x58;  
   uint16_t drt_Address = 0x4;
-  uint8_t drt_Command = 0x59;
-  
+  uint8_t drt_Command = 0x59;  
   uint16_t ddn_Address = 0x4;
-  uint8_t ddn_Command = 0x57;
-  
+  uint8_t ddn_Command = 0x57;  
   uint16_t dup_Address = 0x4;
-  uint8_t dup_Command = 0x56;
-  
+  uint8_t dup_Command = 0x56;  
   uint16_t amzn_Address = 0x4;
-  uint8_t amzn_Command = 0x47;
-  
+  uint8_t amzn_Command = 0x47;  
   uint16_t yt_Address = 0x4;
   uint8_t yt_Command = 0x49;
-
   uint16_t bck_Address = 0x4;
   uint8_t bck_Command = 0x4;
-
   uint16_t ext_Address = 0x4;
   uint8_t ext_Command = 0x4D;
   
@@ -1183,7 +1173,7 @@ void IrSend(int pressType) {
       if (irSendCursor < 8) {
         irSendCursor = irSendCursor + 4; 
       }
-    } else if (lastButton == 6) { // Left - Jump to previous column (Jump -4)
+    } else if (lastButton == 5) { // Left - Jump to previous column (Jump -4)
       // If we are in the second or third column (indices 4-11), jump to the previous column
       if (irSendCursor >= 4) {
         irSendCursor = irSendCursor - 4; 
