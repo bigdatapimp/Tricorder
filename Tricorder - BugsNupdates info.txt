@@ -1,7 +1,7 @@
 Current Version:  v0.432
 Known Issues:
 Compass laggy
-Color OLED flicker
+
 
 General UI/display layout corrections
 
@@ -9,5 +9,3 @@ Upcoming Additions:
 
 LED functions
 UV / IR / White 
-GPS time
-
