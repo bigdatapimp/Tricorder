@@ -1,4 +1,4 @@
-Current Version:  v0.432
+Current Version:  v0.433
 Known Issues:
 Compass laggy
 
@@ -9,3 +9,4 @@ Upcoming Additions:
 
 LED functions
 UV / IR / White 
+
