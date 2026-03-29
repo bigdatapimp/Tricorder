@@ -1,6 +1,7 @@
-Current Version:  v0.433
+Current Version:  v0.43.32
 Known Issues:
-Compass laggy
+Compass laggy / hdg buggy
+Menu Lag
 
 
 General UI/display layout corrections
@@ -8,5 +9,8 @@ General UI/display layout corrections
 Upcoming Additions:
 
 LED functions
-UV / IR / White 
+Shot Timer
+Audio Spectrum
+Seismometer
+BT upload to Phone
 
