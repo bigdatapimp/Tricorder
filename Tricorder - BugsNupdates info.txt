@@ -12,4 +12,7 @@ Shot Timer
 Audio Spectrum
 Seismometer
 BT upload to Phone
+
 General UI/display layout corrections
+Reboot option
+System info - FW ver, memory, etc.
