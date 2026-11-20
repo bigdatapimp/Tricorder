@@ -1,16 +1,15 @@
-Current Version:  v0.43.32
+Current Version:  v0.43.33
+
 Known Issues:
-Compass laggy / hdg buggy
-Menu Lag
+The UTIL menu exit returns to the wrong menu item.
 
-
-General UI/display layout corrections
 
 Upcoming Additions:
 
+option to set local compass declination
 LED functions
 Shot Timer
 Audio Spectrum
 Seismometer
 BT upload to Phone
-
+General UI/display layout corrections
