@@ -3,24 +3,25 @@ Current Version:  v0.5
 Updated with current version:
   Added Audio Spectrum
   Added System Info
+  Added Shot Timer
+  Added Stopwatch
+  Added Countdown Timer
   Added Knots and MGRS to Navigation
   Added Local Time Zone selection
   Fixed Compass heading and display
   Fixed Menu lag
+  dB Meter accuracy and display
 
 Known Issues:
-  The UTIL menu exit returns to the wrong menu item
   Metal detector sensitivity
   EMF detector sensitivity
-  dB Meter accuracy and display
+  FW ver. not shown in sys info
 
 Upcoming Additions:
   option to set local compass declination
   LED functions
-  Shot Timer
   Seismometer
   BT upload to Phone
   GPS point save
 
-General UI/display layout corrections
 
