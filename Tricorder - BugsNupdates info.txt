@@ -21,7 +21,8 @@ Upcoming Additions:
   option to set local compass declination
   LED functions
   Seismometer
-  BT upload to Phone
+  BT upload to Phone 
+  BT Scan
   GPS point save
-
+  
 
