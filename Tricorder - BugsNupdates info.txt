@@ -24,5 +24,7 @@ Upcoming Additions:
   BT upload to Phone 
   BT Scan
   GPS point save
-  
+  Change BIO Menu to Comms
+  Move IR Functions to Comms
+
 
