@@ -12,6 +12,7 @@ Known Issues:
   The UTIL menu exit returns to the wrong menu item
   Metal detector sensitivity
   EMF detector sensitivity
+  dB Meter accuracy and display
 
 Upcoming Additions:
   option to set local compass declination
