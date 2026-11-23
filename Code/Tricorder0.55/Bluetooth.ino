@@ -3,7 +3,7 @@
 // Sends sensor data to a phone over Bluetooth Low Energy. The Tricorder is the "peripheral" (it advertises as
 // "Tricorder"), the phone connects to it and receives notifications.
 //
-// Protocol v4 - eleven read+notify characteristics and one write characteristic (Command) in one custom service (full details and byte layouts are in
+// Protocol v5 - eleven read+notify characteristics and one write characteristic (Command) in one custom service (full details and byte layouts are in
 // Tricorder_BLE_Protocol.md):
 //   Environment  temperature, humidity, pressure, device clock                  once a second
 //   Position     GPS latitude / longitude / altitude, speed, course, satellites, HDOP, fix age   once a second
@@ -18,8 +18,8 @@
 //   Stopwatch    elapsed time, state, lap count                          (Stopwatch)
 //   Countdown    remaining time, set time, state                         (Countdown Timer)
 //
-// and one WRITE characteristic, Command: the phone can press the Tricorder's buttons and open its screens
-// (see Remote.ino). That is OFF until you switch it on at the Tricorder (this screen, RIGHT).
+// and one WRITE characteristic, Command: the phone can press the Tricorder's buttons, open its screens and send
+// one of the IR Send screen's twelve codes (see Remote.ino). That is OFF until you switch it on at the Tricorder (this screen, RIGHT).
 //
 // Bluetooth is OFF until you turn it on (COMMS menu > Bluetooth > ENTER). It stays on when you leave
 // the screen, so you can keep using the other tools while the phone receives data. It is off after every
@@ -31,7 +31,7 @@
 
 #include <ArduinoBLE.h>
 
-#define BLE_PROTOCOL_VERSION 4
+#define BLE_PROTOCOL_VERSION 5
 #define BLE_DEVICE_NAME      "Tricorder"
 #define BLE_NOTIFY_PERIOD_MS 1000
 

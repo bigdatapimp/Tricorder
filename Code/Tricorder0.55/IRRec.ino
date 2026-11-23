@@ -7,7 +7,7 @@ void irReceiver(int pressType) {
     display.clearDisplay();
     display.display();
     irDataReceived = false;
-    currentState = UTIL_MENU;
+    currentState = COMMS_MENU;
     return;
   }
 

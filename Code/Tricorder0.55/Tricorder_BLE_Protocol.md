@@ -1,4 +1,4 @@
-# Tricorder BLE Protocol, version 4
+# Tricorder BLE Protocol, version 5
 
 This is the contract between the Tricorder firmware (`Bluetooth.ino`) and any phone app. If either side changes
 it, change this document first.
@@ -80,8 +80,8 @@ Trust a field only when its flag bit is set. Latitude/longitude: divide by 10,00
 | 3 | uint8 | active screen id | see below |
 | 4 | uint32 | device uptime | ms |
 | 8 | uint32 | largest free memory block | bytes |
-| 12 | uint8 | protocol version | currently 4 |
-| 13 | uint8 | flags | bit 0 remote control is switched on at the Tricorder, bit 1 the Tricorder is still carrying out the last remote command |
+| 12 | uint8 | protocol version | currently 5 |
+| 13 | uint8 | flags | bit 0 remote control is switched on at the Tricorder, bit 1 the Tricorder is still carrying out the last remote command, bit 2 remote control is on but the sketch's `loop()` never applies the commands (the `remoteApply()` line is missing) |
 | 14 | uint16 | firmware version x 1000 | 550 = firmware 0.55; `0xFFFF` = unknown |
 
 ### Motion (10 bytes)
@@ -214,23 +214,34 @@ exactly as if the button had been pressed on the device.
 
 | Byte | Meaning |
 |---|---|
-| 0 | command: 1 = BUTTON, 2 = GOTO |
-| 1 | BUTTON: button, 1 ENTER, 2 UP, 3 RIGHT, 4 DOWN, 5 LEFT. GOTO: screen id (0 = the main menu) |
-| 2 | BUTTON: 0 = short press, 1 = long press. GOTO: 0 |
+| 0 | command: 1 = BUTTON, 2 = GOTO, 3 = IR |
+| 1 | BUTTON: button, 1 ENTER, 2 UP, 3 RIGHT, 4 DOWN, 5 LEFT. GOTO: screen id (0 = the main menu). IR: the code number (0-11, below) |
+| 2 | BUTTON: 0 = short press, 1 = long press. GOTO and IR: 0 |
 | 3 | 0 |
 
 - **GOTO** may open: Navigation (1), Metal Detector (2), EMF Meter (3), Atmospheric (4), dB Meter (5), Spectrum (6),
-  Battery (7), System Info (8), Shot Timer (13), Stopwatch (14), Countdown (15), and the main menu (0). The Tricorder
+  Battery (7), System Info (8), IR Send (11), Shot Timer (13), Stopwatch (14), Countdown (15), and the main menu (0).
+  Opening IR Send transmits nothing. The Tricorder
   backs out to its main menu and walks to the screen with a few presses; this takes under a second, during which the
   Device flags report *busy*.
 - **Safety.** Remote control is **off** every time the Tricorder starts. The user switches it on at the Tricorder
   (COMMS menu > Bluetooth, RIGHT), and it switches off when Bluetooth is turned off. While it is off, commands are
   silently ignored. The Device packet's flag bit 0 says whether it is on.
-- The phone can never operate (or GOTO) the Reboot, Time Zone, IR Send, IR Receive and Bluetooth screens. On those
-  screens only a LEFT press (to back out) is accepted.
+- The phone can never GOTO the Reboot, Time Zone, IR Receive and Bluetooth screens. On Reboot, Time Zone, IR Send and
+  IR Receive only a LEFT press (to back out) is accepted from a BUTTON command. On the Bluetooth screen UP, DOWN and LEFT are accepted but not ENTER or
+  RIGHT, which would switch Bluetooth or remote control off. (The Bluetooth screen is where the user switches
+  remote control on, so it is the screen the Tricorder is usually on when the phone starts sending commands.)
+- **IR** is the one command that makes the Tricorder transmit, and it can only choose one of the twelve codes already
+  on the Tricorder's IR Send screen: 0 PWR, 1 VOL+, 2 VOL-, 3 OK, 4 BACK, 5 EXIT, 6 LEFT, 7 RIGHT, 8 DOWN, 9 UP,
+  10 Amazon, 11 YouTube (NEC, address 0x04). The Tricorder opens the IR Send screen first if it is not open (about a
+  second), then selects the option and presses ENTER, so exactly the same code runs as when it is done by hand. Once
+  the screen is open (Device packet, active screen 11) each command sends at once; a phone should wait for that
+  before sending quick successive codes. A code number above 11 is ignored.
 - A real button press on the Tricorder cancels whatever the phone was doing.
 - Commands that are malformed (unknown command, button outside 1-5, press kind above 1) or too short are ignored.
 - Send the next command only after the previous write has completed (Android's `onCharacteristicWrite`).
+- **Diagnosis.** Every command the Tricorder receives is printed on its Serial Monitor with the reason it was accepted or
+  ignored (remote control off, bad button, button not allowed on this screen, and so on).
 
 Typical buttons on each screen (what the Tricorder's own buttons do there):
 
@@ -278,11 +289,11 @@ These are real outputs from the firmware's packing code for the inputs shown.
 - course `0x0000` -> **0.0 degrees** (359.97 rounds to 360.0, which wraps to 0.0)
 - satellites 9, HDOP `0x0c` = 12 -> **1.2**, fix age 2 s, flags `0x0f` (all valid)
 
-**Device**: `ac 0f 57 05 00 5e d0 b2 20 bf 02 00 02 00 26 02`
+**Device**: `ac 0f 57 05 00 5e d0 b2 20 bf 02 00 05 00 26 02`
 
 - battery `0x0fac` = 4012 mV, 87 %, screen id 5 (dB Meter)
 - uptime `0xb2d05e00` = 3,000,000,000 ms, free block `0x0002bf20` = 180000 bytes
-- protocol version 2, reserved 0
+- protocol version 5, flags `0x00` (remote control off), firmware `0x0226` = 550 -> **0.55**
 - firmware `0x0226` = 550 -> **0.55**
 
 **Motion**: `d2 04  e0 ff  2f 00  e3 01  0f  00`
@@ -335,8 +346,10 @@ These are real outputs from the firmware's packing code for the inputs shown.
 - `01 01 00 00`: BUTTON 1 (ENTER), short press
 - `02 0d 00 00`: GOTO screen 13 (Shot Timer)
 - `02 00 00 00`: GOTO the main menu
+- `03 0a 00 00`: IR, code 10 (Amazon)
+- `03 01 00 00`: IR, code 1 (VOL+)
 
-**Device** with remote control on: `ac 0f 57 05  00 5e d0 b2  20 bf 02 00  04  01  26 02` (byte 13 = `01`).
+**Device** with remote control on: `ac 0f 57 05  00 5e d0 b2  20 bf 02 00  05  01  26 02` (byte 13 = `01`).
 
 ## Testing with the nRF Connect app
 

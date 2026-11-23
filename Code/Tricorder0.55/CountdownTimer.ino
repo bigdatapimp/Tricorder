@@ -4,7 +4,9 @@
 //           ENTER = start
 // RUNNING   ENTER = pause      LEFT = cancel (back to setup)
 // PAUSED    ENTER = resume     LEFT = reset (back to setup)
-// TIME UP   the alarm beeps for 20 s (or until you press a button); any short press returns to setup
+// TIME UP   the alarm beeps for 20 s and the red LED blinks until you stop it: any short press (or the phone
+//           app's "Stop alarm") stops both and returns to setup. The beeping stops by itself after 20 s,
+//           the LED keeps blinking until the alarm is stopped.
 // LEFT (long) = exit from anywhere  (leaving the screen cancels a running countdown)
 //
 // The time you set is remembered while the sketch is running, so you can restart the same countdown.
@@ -19,6 +21,7 @@
 #define CD_ALARM_MS    20000          // how long the alarm keeps beeping
 #define CD_BEEP_PERIOD 500            // one beep every 500 ms ...
 #define CD_BEEP_LEN    200            // ... lasting 200 ms
+#define CD_LED_PERIOD  500            // the red LED blinks once every 500 ms (250 ms on, 250 ms off)
 
 int   cdMode = CD_SET;
 int   cdSetMin = 5;                   // the time that was set
@@ -28,6 +31,8 @@ unsigned long cdEndMs = 0;            // millis() when the countdown reaches zer
 unsigned long cdRemainMs = 0;         // time left (while paused)
 unsigned long cdAlarmStartMs = 0;
 bool  cdBeepOn = false;
+bool  cdLedActive = false;            // this screen is using the RGB LED (from the alarm until it is stopped)
+bool  cdLedLit = false;               // the red LED is lit at the moment
 bool  cdUiInit = false;
 bool  cdOledDirty = true;
 unsigned long cdLastTftMs = 0;
@@ -59,6 +64,29 @@ void cdBeepStop() {
   }
 }
 
+// The RGB LED (LEDR / LEDG / LEDB) is active LOW on the Nano 33 BLE: LOW = lit
+void cdLedWrite(bool redOn) {
+  digitalWrite(LEDR, redOn ? LOW : HIGH);
+  digitalWrite(LEDG, HIGH);
+  digitalWrite(LEDB, HIGH);
+  cdLedLit = redOn;
+}
+
+void cdLedStart() {                   // the alarm begins: red on
+  pinMode(LEDR, OUTPUT);
+  pinMode(LEDG, OUTPUT);
+  pinMode(LEDB, OUTPUT);
+  cdLedActive = true;
+  cdLedWrite(true);
+}
+
+void cdLedStop() {                    // the alarm was stopped, or the screen was left: LED off
+  if (cdLedActive) {
+    cdLedWrite(false);
+    cdLedActive = false;
+  }
+}
+
 void cdSetMode(int m) {
   cdMode = m;
   cdOledDirty = true;
@@ -66,8 +94,14 @@ void cdSetMode(int m) {
   cdShownField = -1;
   for (int i = 0; i < 4; i++) tftTextForget(cdShown[i], 16);
   tft.fillScreen(BLACK);
-  if (m != CD_DONE) cdBeepStop();
-  if (m == CD_DONE) cdAlarmStartMs = millis();
+  if (m != CD_DONE) {
+    cdBeepStop();
+    cdLedStop();
+  }
+  if (m == CD_DONE) {
+    cdAlarmStartMs = millis();
+    cdLedStart();
+  }
 }
 
 void cdDrawOled() {
@@ -130,6 +164,7 @@ void CountdownTimer(int pressType) {
   // --- Exit ---
   if (pressType == LONG_PRESS && lastButton == 5) {
     cdBeepStop();
+    cdLedStop();
     cdUiInit = false;
     cdMode = CD_SET;
     tft.fillScreen(BLACK);
@@ -157,6 +192,10 @@ void CountdownTimer(int pressType) {
     bool shouldBeep = (t < CD_ALARM_MS) && ((t % CD_BEEP_PERIOD) < CD_BEEP_LEN);
     if (shouldBeep && !cdBeepOn) { tone(BEEPER_PIN, CD_ALARM_HZ); cdBeepOn = true; }
     if (!shouldBeep && cdBeepOn) cdBeepStop();
+
+    // red LED: blinks until the alarm is stopped (the beeping stops by itself after 20 s, the LED does not)
+    bool ledOn = (t % CD_LED_PERIOD) < (CD_LED_PERIOD / 2);
+    if (ledOn != cdLedLit) cdLedWrite(ledOn);
   }
 
   // --- Buttons ---

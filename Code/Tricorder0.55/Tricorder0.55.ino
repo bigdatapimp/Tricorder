@@ -20,9 +20,7 @@
 #include <TinyGPSPlus.h>
 #include <SPI.h>
 #define IR_SEND_PIN 3
-#define IR_USE_SAMD_TIMER
 #include <IRremote.h>
-#include "PinDefinitionsAndMore.h" // Set IR_SEND_PIN for different CPU's
 #include <TimeLib.h>
 #include <Timezone.h>
 #include <ArduinoBLE.h>
@@ -112,7 +110,7 @@ enum State {
 const char* mainMenuOptions[5] = {"GEO", "ENV", "COMMS", "UTIL", "SYS"};
 const char* geoMenuOptions[3] = {"MDet", "EMF", "Nav"};
 const char* envMenuOptions[3] = {"Atmo", "dB", "Spec"};
-const char* utilMenuOptions[5] = {"IR TX", "IR RX", "Shot Timer", "Stopwatch", "Countdown"};
+const char* utilMenuOptions[3] = {"Shot Timer", "Stopwatch", "Countdown"};
 const char* sysMenuOptions[4] = {"Batt", "Info", "Time Zone", "Reboot"};
 
 int mainMenuCursor = 0;  // 0-4 for main menu

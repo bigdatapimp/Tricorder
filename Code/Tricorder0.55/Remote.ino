@@ -8,14 +8,20 @@
 //   [1, button, kind, 0]   press a button: button 1 ENTER, 2 UP, 3 RIGHT, 4 DOWN, 5 LEFT;  kind 0 short, 1 long
 //   [2, screen id, 0, 0]   open a screen (ids as in the "active screen" field; 0 = the main menu). The Tricorder backs
 //                          out to the main menu and walks to the screen with a few presses, like you would.
+//   [3, code, 0, 0]        send one IR code: 'code' is the number of the option on the IR Send screen (0 PWR, 1 VUP,
+//                          2 VDN, 3 OK, 4 BACK, 5 EXIT, 6 Lft, 7 Rt, 8 Dn, 9 Up, 10 Amz, 11 YT). The Tricorder opens
+//                          the IR Send screen first if it isn't open, then "presses ENTER" on that option, so exactly
+//                          the same code runs as when you do it by hand.
 //
 // SAFETY
 //   - Remote control is OFF every time the Tricorder starts. You switch it on yourself: COMMS > Bluetooth, then
 //     RIGHT. Commands are ignored while it is off, and it switches off when Bluetooth is turned off.
-//   - The phone can never operate the Reboot, Time Zone, IR Send and IR Receive screens or open them; on those
-//     screens only LEFT (back out) is accepted. On the Bluetooth screen it may press UP, DOWN and LEFT but not
-//     ENTER or RIGHT. (So the phone cannot restart the unit, send IR codes, or switch Bluetooth or remote
-//     control off from under itself.)
+//   - The phone can never operate the Reboot, Time Zone, IR Send and IR Receive screens with button presses, and
+//     cannot open Reboot, Time Zone, IR Receive or Bluetooth; on those screens only LEFT (back out) is accepted.
+//     On the Bluetooth screen it may press UP, DOWN and LEFT but not ENTER or RIGHT. (So the phone cannot restart
+//     the unit, or switch Bluetooth or remote control off from under itself.)
+//   - The ONLY way the phone makes the Tricorder transmit is the IR command above, which can only choose one of
+//     the twelve codes already on the IR Send screen.
 //   - A real button press always wins: it cancels whatever the phone was doing.
 //
 // DIAGNOSIS: every command received is printed on the Serial Monitor with the reason it was accepted or ignored.
@@ -26,6 +32,8 @@
 
 #define REMOTE_CMD_BUTTON   1
 #define REMOTE_CMD_GOTO     2
+#define REMOTE_CMD_IR       3
+#define REMOTE_IR_CODES     12      // number of options on the IR Send screen (see IRSend.ino)
 #define REMOTE_MAX_STEPS    8
 #define REMOTE_STEP_MS      150     // pause between the steps of a script, so each screen has time to react
 #define REMOTE_OFF_WHEN_PHONE_DISCONNECTS 0   // set to 1 to switch remote control off whenever the phone disconnects
@@ -33,7 +41,8 @@
 bool remoteEnabled = false;
 
 // A script is a few steps run one at a time. Step kinds: 0 short press, 1 long press (arg = button 1-5),
-// 2 put the main menu cursor on item 'arg', 3 put the submenu cursor on item 'arg'.
+// 2 put the main menu cursor on item 'arg', 3 put the submenu cursor on item 'arg', 4 send IR code 'arg' (select
+// that option on the IR Send screen and press ENTER; only while that screen is open).
 uint8_t remoteStepKind[REMOTE_MAX_STEPS];
 uint8_t remoteStepArg[REMOTE_MAX_STEPS];
 int remoteStepCount = 0;
@@ -120,9 +129,10 @@ bool remoteLocate(int screenId, int* category, int* item) {
     case 13: *category = 3; *item = 0; return true;   // Shot Timer
     case 14: *category = 3; *item = 1; return true;   // Stopwatch
     case 15: *category = 3; *item = 2; return true;   // Countdown
+    case 11: *category = 2; *item = 1; return true;   // IR Send (opening it sends nothing)
     case 7:  *category = 4; *item = 0; return true;   // Battery
     case 8:  *category = 4; *item = 1; return true;   // System Info
-    default: return false;                            // Time Zone, Reboot, IR, Bluetooth: never opened remotely
+    default: return false;                            // Time Zone, Reboot, IR Receive, Bluetooth: never opened remotely
   }
 }
 
@@ -179,6 +189,12 @@ void remoteHandleCommand(const uint8_t* d, int n) {
     remoteNextMs = millis();
     if (remoteStepCount == 0) remoteLog("nothing to do: already on that screen, or the phone may not open it", d, n);
     else remoteLog("accepted: opening a screen", d, n);
+  } else if (d[0] == REMOTE_CMD_IR) {
+    if (d[1] >= REMOTE_IR_CODES) { remoteLog("ignored: no such IR code", d, n); return; }
+    remoteBuildGoto(11);                                   // open the IR Send screen (does nothing if it is already open)
+    remoteAddStep(4, d[1]);                                // then send the chosen code
+    remoteNextMs = millis();
+    remoteLog("accepted: sending an IR code", d, n);
   } else {
     remoteLog("ignored: unknown command", d, n);
   }
@@ -212,6 +228,15 @@ int remoteApply(int pressType, int rawButton) {
     }
     lastButton = arg;
     return (kind == 0) ? SHORT_PRESS : LONG_PRESS;
+  }
+  if (kind == 4) {                                          // send an IR code: only while the IR Send screen is open
+    if (currentState != IRSEND) {
+      remoteClear();
+      return pressType;
+    }
+    irSendCursor = arg;                                     // select the option ...
+    lastButton = 1;                                         // ... and press ENTER, in one step so that quick
+    return SHORT_PRESS;                                     //     successive taps can't cut each other short
   }
   if (kind == 2) {
     mainMenuCursor = arg;
