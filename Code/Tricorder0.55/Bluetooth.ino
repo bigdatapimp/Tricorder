@@ -71,9 +71,9 @@
 #define BLE_LIVE_PERIOD_MS   200      // Motion / Sound / Spectrum while their screen is open
 #define BLE_IDLE_PERIOD_MS   2000     // ... and otherwise
 
-// ---- Communications menu (Bluetooth is its first entry; add future tools to this list) ----
-#define BIO_MENU_COUNT 1
-const char* bioMenuOptions[BIO_MENU_COUNT] = {"Bluetooth"};
+// ---- Communications menu (Bluetooth and the two IR tools; add future tools to this list) ----
+#define COMMS_MENU_COUNT 3
+const char* commsMenuOptions[COMMS_MENU_COUNT] = {"Bluetooth", "IR TX", "IR RX"};
 
 // ---- values published by the other screens, sent over Bluetooth ----
 // Navigation (Nagivation.ino) fills in the compass values and Spectrum (Spectrum.ino) the strongest-bin values
@@ -229,7 +229,8 @@ void blePackPosition(uint8_t* out, bool locValid, double lat, double lng, bool a
 //   4  uint32  device uptime, ms
 //   8  uint32  largest free memory block, bytes
 //  12  uint8   protocol version
-//  13  uint8   flags: bit0 remote control is switched on, bit1 the phone's remote script is still running
+//  13  uint8   flags: bit0 remote control is switched on, bit1 the phone's remote script is still running,
+//                     bit2 remote control is on but loop() never calls remoteApply() (the loop() line is missing)
 //  14  uint16  firmware version x 1000, e.g. 0.55 is sent as 550   (0xFFFF = unknown)
 void blePackDevice(uint8_t* out, int batteryMv, int batteryPct, uint8_t screenId, uint32_t uptimeMs,
                    uint32_t freeBytes, float firmware, uint8_t flags) {
@@ -598,7 +599,7 @@ void bleSendDevice() {
   uint8_t pkt[BLE_DEV_LEN];
   int mv, pct;
   bleReadBattery(&mv, &pct);
-  uint8_t flags = (uint8_t)((remoteEnabled ? 0x01 : 0) | (remoteBusy() ? 0x02 : 0));
+  uint8_t flags = (uint8_t)((remoteEnabled ? 0x01 : 0) | (remoteBusy() ? 0x02 : 0) | (remoteHookMissing() ? 0x04 : 0));
   blePackDevice(pkt, mv, pct, bleScreenId(), millis(), sysLargestFreeBlock(), FWver, flags);   // FWver: float in the main sketch
   bleDevChar.writeValue(pkt, BLE_DEV_LEN);
   bleSentCount++;

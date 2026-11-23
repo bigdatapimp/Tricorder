@@ -98,11 +98,11 @@ void handleCommsMenu(int pressType) {
   if (menuDirty) {
     display.clearDisplay();
     display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SSD1306_WHITE);   // IR Send leaves its text colour black if its last item was selected
     display.setCursor(10, 9);
     display.println(F("COMMUNICATIONS"));
 
-    for (int i = 0; i < BIO_MENU_COUNT; i++) {
+    for (int i = 0; i < COMMS_MENU_COUNT; i++) {
       int y = 20 + (i * 8);
       display.setCursor(20, y);
       if (i == subMenuCursor) {
@@ -110,7 +110,7 @@ void handleCommsMenu(int pressType) {
       } else {
         display.print("  ");
       }
-      display.println(bioMenuOptions[i]);
+      display.println(commsMenuOptions[i]);
     }
     display.display();
     menuDirty = false;
@@ -119,15 +119,17 @@ void handleCommsMenu(int pressType) {
 
   if (pressType == SHORT_PRESS) {
     if (lastButton == 2) { // Up
-      subMenuCursor = (subMenuCursor - 1 + BIO_MENU_COUNT) % BIO_MENU_COUNT;
+      subMenuCursor = (subMenuCursor - 1 + COMMS_MENU_COUNT) % COMMS_MENU_COUNT;
       menuDirty = true;
     } else if (lastButton == 4) { // Down
-      subMenuCursor = (subMenuCursor + 1) % BIO_MENU_COUNT;
+      subMenuCursor = (subMenuCursor + 1) % COMMS_MENU_COUNT;
       menuDirty = true;
     } else if (lastButton == 1) { // Enter
       tft.fillScreen(BLACK);
       switch (subMenuCursor) {
         case 0: currentState = BLUETOOTH_SCREEN; break;
+        case 1: currentState = IRSEND; break;
+        case 2: currentState = IRRECEIVER; break;
       }
     }
   } else if (pressType == LONG_PRESS && lastButton == 5) { // Long Left to exit
@@ -193,7 +195,7 @@ void handleUtilMenu(int pressType) {
     display.setCursor(10, 9);
     display.println(F("UTILITY"));
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 3; i++) {
       int y = 20 + (i * 8);
       display.setCursor(20, y);
       if (i == subMenuCursor) {
@@ -210,19 +212,17 @@ void handleUtilMenu(int pressType) {
 
   if (pressType == SHORT_PRESS) {
     if (lastButton == 2) { // Up
-      subMenuCursor = (subMenuCursor - 1 + 5) % 5;
+      subMenuCursor = (subMenuCursor - 1 + 3) % 3;
       menuDirty = true;
     } else if (lastButton == 4) { // Down
-      subMenuCursor = (subMenuCursor + 1) % 5;
+      subMenuCursor = (subMenuCursor + 1) % 3;
       menuDirty = true;
     } else if (lastButton == 1) { // Enter
       tft.fillScreen(BLACK);
       switch (subMenuCursor) {
-        case 0: currentState = IRSEND; break;
-        case 1: currentState = IRRECEIVER; break;
-        case 2: currentState = SHOTTIMER; break;
-        case 3: currentState = STOPWATCH; break;
-        case 4: currentState = COUNTDOWNTIMER; break;
+        case 0: currentState = SHOTTIMER; break;
+        case 1: currentState = STOPWATCH; break;
+        case 2: currentState = COUNTDOWNTIMER; break;
       }
     }
   } else if (pressType == LONG_PRESS && lastButton == 5) { // Long Left to exit

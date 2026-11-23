@@ -12,10 +12,15 @@
 // SAFETY
 //   - Remote control is OFF every time the Tricorder starts. You switch it on yourself: COMMS > Bluetooth, then
 //     RIGHT. Commands are ignored while it is off, and it switches off when Bluetooth is turned off.
-//   - The phone can never operate the Reboot, Time Zone, IR Send, IR Receive and Bluetooth screens or open them;
-//     on those screens only LEFT (back out) is accepted. (So the phone cannot switch Bluetooth or remote
-//     control off from under itself, and cannot restart the unit or send IR codes.)
+//   - The phone can never operate the Reboot, Time Zone, IR Send and IR Receive screens or open them; on those
+//     screens only LEFT (back out) is accepted. On the Bluetooth screen it may press UP, DOWN and LEFT but not
+//     ENTER or RIGHT. (So the phone cannot restart the unit, send IR codes, or switch Bluetooth or remote
+//     control off from under itself.)
 //   - A real button press always wins: it cancels whatever the phone was doing.
+//
+// DIAGNOSIS: every command received is printed on the Serial Monitor with the reason it was accepted or ignored.
+// If loop() does not call remoteApply() (the line "pressType = remoteApply(pressType, button);" is missing),
+// remoteHookMissing() turns true and the phone app says so.
 //
 // If you change the menus, update remoteLocate() below (menu position of each screen) to match.
 
@@ -34,6 +39,25 @@ uint8_t remoteStepArg[REMOTE_MAX_STEPS];
 int remoteStepCount = 0;
 int remoteStepIndex = 0;
 unsigned long remoteNextMs = 0;
+unsigned long remoteLastApplyMs = 0;     // when loop() last called remoteApply(): used to notice a missing hook
+
+// True if remote control is on but loop() isn't calling remoteApply(), i.e. this line is missing from loop():
+//     pressType = remoteApply(pressType, button);
+bool remoteHookMissing() {
+  return remoteEnabled && (millis() - remoteLastApplyMs) > 1000UL;
+}
+
+// Print a received command and what was done with it (Serial Monitor)
+void remoteLog(const char* msg, const uint8_t* d, int n) {
+  Serial.print("Remote: command");
+  for (int i = 0; i < n; i++) {
+    Serial.print(' ');
+    if (d[i] < 16) Serial.print('0');
+    Serial.print(d[i], HEX);
+  }
+  Serial.print(" - ");
+  Serial.println(msg);
+}
 
 bool remoteBusy() {
   return remoteStepIndex < remoteStepCount;
@@ -57,11 +81,18 @@ void remoteSetEnabled(bool on) {
   if (!on) remoteClear();
 }
 
-// Screens the phone may not drive: they send IR codes, change the clock settings, restart the unit, or control
-// Bluetooth / remote control itself
-bool remoteBlockedState() {
-  return currentState == REBOOT || currentState == TIMEZONE || currentState == IRSEND ||
-         currentState == IRRECEIVER || currentState == BLUETOOTH_SCREEN;
+// May the phone press this button (1 ENTER, 2 UP, 3 RIGHT, 4 DOWN, 5 LEFT) on the screen that is open now?
+//  - Reboot, Time Zone, IR Send, IR Receive: only LEFT (to back out). They restart the unit, change settings or
+//    send IR codes.
+//  - Bluetooth screen: UP, DOWN and LEFT. ENTER and RIGHT would switch Bluetooth / remote control off.
+bool remoteButtonAllowed(int button) {
+  if (currentState == REBOOT || currentState == TIMEZONE || currentState == IRSEND || currentState == IRRECEIVER) {
+    return button == 5;
+  }
+  if (currentState == BLUETOOTH_SCREEN) {
+    return button == 2 || button == 4 || button == 5;
+  }
+  return true;
 }
 
 // 0 = the main menu, 1 = a category menu, 2 = a tool screen
@@ -86,9 +117,9 @@ bool remoteLocate(int screenId, int* category, int* item) {
     case 4:  *category = 1; *item = 0; return true;   // Atmospheric
     case 5:  *category = 1; *item = 1; return true;   // dB Meter
     case 6:  *category = 1; *item = 2; return true;   // Spectrum
-    case 13: *category = 3; *item = 2; return true;   // Shot Timer
-    case 14: *category = 3; *item = 3; return true;   // Stopwatch
-    case 15: *category = 3; *item = 4; return true;   // Countdown
+    case 13: *category = 3; *item = 0; return true;   // Shot Timer
+    case 14: *category = 3; *item = 1; return true;   // Stopwatch
+    case 15: *category = 3; *item = 2; return true;   // Countdown
     case 7:  *category = 4; *item = 0; return true;   // Battery
     case 8:  *category = 4; *item = 1; return true;   // System Info
     default: return false;                            // Time Zone, Reboot, IR, Bluetooth: never opened remotely
@@ -125,25 +156,38 @@ void remotePhoneDisconnected() {
 
 // A command received over Bluetooth
 void remoteHandleCommand(const uint8_t* d, int n) {
-  if (!remoteEnabled || n < 2) return;
+  if (!remoteEnabled) {
+    remoteLog("IGNORED: remote control is switched off (COMMS > Bluetooth > RIGHT)", d, n);
+    return;
+  }
+  if (n < 2) {
+    remoteLog("ignored: too short", d, n);
+    return;
+  }
   if (d[0] == REMOTE_CMD_BUTTON) {
-    if (n < 3) return;
+    if (n < 3) { remoteLog("ignored: too short", d, n); return; }
     int button = d[1];
-    if (button < 1 || button > 5) return;
-    if (d[2] > 1) return;
-    if (remoteBlockedState() && button != 5) return;
+    if (button < 1 || button > 5) { remoteLog("ignored: no such button", d, n); return; }
+    if (d[2] > 1) { remoteLog("ignored: press kind must be 0 (short) or 1 (long)", d, n); return; }
+    if (!remoteButtonAllowed(button)) { remoteLog("ignored: the phone may not press that button on this screen", d, n); return; }
     remoteClear();
     remoteAddStep(d[2], (uint8_t)button);                  // kind 0 = short, 1 = long
     remoteNextMs = millis();
+    remoteLog("accepted: button press", d, n);
   } else if (d[0] == REMOTE_CMD_GOTO) {
     remoteBuildGoto(d[1]);
     remoteNextMs = millis();
+    if (remoteStepCount == 0) remoteLog("nothing to do: already on that screen, or the phone may not open it", d, n);
+    else remoteLog("accepted: opening a screen", d, n);
+  } else {
+    remoteLog("ignored: unknown command", d, n);
   }
 }
 
 // Called from loop() with the real button state. Returns the press type to use: the real one, or the next
 // step of a remote script.
 int remoteApply(int pressType, int rawButton) {
+  remoteLastApplyMs = millis();                              // loop() is calling us: the hook is in place
   if (!remoteBusy()) {
     remoteClear();
     return pressType;
@@ -162,7 +206,7 @@ int remoteApply(int pressType, int rawButton) {
   remoteNextMs = now + REMOTE_STEP_MS;
 
   if (kind == 0 || kind == 1) {
-    if (remoteBlockedState() && arg != 5) {                 // the screen changed to a blocked one: drop the script
+    if (!remoteButtonAllowed(arg)) {                        // the screen changed to one that button is blocked on
       remoteClear();
       return pressType;
     }
