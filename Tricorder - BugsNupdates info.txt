@@ -6,6 +6,7 @@ Updated with current version:
   Change MET Menu to Enviromental
   BT comms to Phone (companion app)
   FW ver. is now shown in sys info
+  Onboard LED blinks RED when Countdown Timer ends
 
 Known Issues:
   Metal detector sensitivity
@@ -19,4 +20,4 @@ Upcoming Additions / Changes:
   GPS point save
   GPS Navigation
   IR remote clone
-  Onboard LED blink when Countdown Timer ends
+  
