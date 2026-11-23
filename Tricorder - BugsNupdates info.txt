@@ -5,12 +5,12 @@ Updated with current version:
   Move IR Functions to Comms
   Change MET Menu to Enviromental
   BT comms to Phone (companion app)
+  FW ver. is now shown in sys info
 
 Known Issues:
   Metal detector sensitivity
   EMF detector sensitivity
-  FW ver. not shown in sys info
-
+  
 Upcoming Additions / Changes:
   option to set local compass declination
   LED functions
