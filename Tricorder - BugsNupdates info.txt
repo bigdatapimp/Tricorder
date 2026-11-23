@@ -1,16 +1,10 @@
-Current Version:  v0.5
+Current Version:  v0.55
 
 Updated with current version:
-  Added Audio Spectrum
-  Added System Info
-  Added Shot Timer
-  Added Stopwatch
-  Added Countdown Timer
-  Added Knots and MGRS to Navigation
-  Added Local Time Zone selection
-  Fixed Compass heading and display
-  Fixed Menu lag
-  dB Meter accuracy and display
+  Change BIO Menu to Comms
+  Move IR Functions to Comms
+  Change MET Menu to Enviromental
+  BT comms to Phone (companion app)
 
 Known Issues:
   Metal detector sensitivity
@@ -20,12 +14,9 @@ Known Issues:
 Upcoming Additions / Changes:
   option to set local compass declination
   LED functions
-  Seismometer
-  BT upload to Phone 
+  Seismometer   
   BT Scan
   GPS point save
+  GPS Navigation
   IR remote clone
-  Change BIO Menu to Comms
-  Move IR Functions to Comms
-  Change MET Menu to Enviromental
-
+  Onboard LED blink when Countdown Timer ends
