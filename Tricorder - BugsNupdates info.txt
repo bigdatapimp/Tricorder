@@ -1,23 +1,20 @@
-Current Version:  v0.55
+Current Version:  v0.6
 
 Updated with current version:
-  Change BIO Menu to Comms
-  Move IR Functions to Comms
-  Change MET Menu to Enviromental
-  BT comms to Phone (companion app)
-  FW ver. is now shown in sys info
-  Onboard LED blinks RED when Countdown Timer ends
+  BT comms to Phone (companion app updates)
+  IR remote clone
+  Code Cleanup
+  UI Cleanup / Cosmetics
 
 Known Issues:
   Metal detector sensitivity
   EMF detector sensitivity
-  
+
 Upcoming Additions / Changes:
-  option to set local compass declination
+  Option to set local Compass Declination
+  GPS point save
+  GPS Navigation
   LED functions
   Seismometer   
   BT Scan
-  GPS point save
-  GPS Navigation
-  IR remote clone
-  
+  Remote Audio
