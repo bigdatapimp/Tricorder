@@ -31,8 +31,9 @@
 // Needs the ArduinoBLE library (Library Manager) and   #include <ArduinoBLE.h>   at the top of the main sketch.
 
 #include <ArduinoBLE.h>
+#include <utility/ATT.h>      // ATT.setMaxMtu(): bigger Bluetooth packets for the live audio (needs ArduinoBLE 1.3 or later)
 
-#define BLE_PROTOCOL_VERSION 10
+#define BLE_PROTOCOL_VERSION 13
 #define BLE_DEVICE_NAME      "Tricorder"
 #define BLE_NOTIFY_PERIOD_MS 1000
 
@@ -51,6 +52,7 @@
 #define BLE_CMD_UUID      "3f5a000c-7c2b-4e6d-a1b3-5d8e9c0f1a20"
 #define BLE_IRR_UUID      "3f5a000d-7c2b-4e6d-a1b3-5d8e9c0f1a20"
 #define BLE_AUD_UUID      "3f5a000e-7c2b-4e6d-a1b3-5d8e9c0f1a20"
+#define BLE_SEI_UUID      "3f5a000f-7c2b-4e6d-a1b3-5d8e9c0f1a20"
 
 // Pressure correction. The Atmospheric screen converts to inHg with 0.02994 instead of the true 0.02953: a
 // deliberate correction of the pressure sensor against a reference instrument (about +1.4 %). The same
@@ -70,9 +72,10 @@
 #define BLE_SWT_LEN 8
 #define BLE_CDT_LEN 8
 #define BLE_IRR_LEN 19
-#define BLE_AUD_LEN 20       // one live-microphone packet (MicStream.ino)
+#define BLE_AUD_LEN 244      // the largest live-microphone packet (MicStream.ino): 20 bytes, up to 244 when the phone has a big Bluetooth packet size
+#define BLE_SEI_LEN 12       // the Seismometer packet (Seismometer.ino)
 #define BLE_CMD_LEN 4                // a command is 4 bytes
-#define BLE_STREAMS 12               // number of characteristics that are sent
+#define BLE_STREAMS 13               // number of characteristics that are sent
 #define BLE_LIVE_PERIOD_MS   200      // Motion / Sound / Spectrum while their screen is open
 #define BLE_IDLE_PERIOD_MS   2000     // ... and otherwise
 
@@ -509,7 +512,8 @@ BLECharacteristic bleLstChar(BLE_LST_UUID, BLERead | BLENotify, BLE_LST_LEN, tru
 BLECharacteristic bleSwtChar(BLE_SWT_UUID, BLERead | BLENotify, BLE_SWT_LEN, true);
 BLECharacteristic bleCdtChar(BLE_CDT_UUID, BLERead | BLENotify, BLE_CDT_LEN, true);
 BLECharacteristic bleIrrChar(BLE_IRR_UUID, BLERead | BLENotify, BLE_IRR_LEN, true);
-BLECharacteristic bleAudChar(BLE_AUD_UUID, BLENotify, BLE_AUD_LEN, true);    // live microphone (MicStream.ino): notify only
+BLECharacteristic bleAudChar(BLE_AUD_UUID, BLENotify, BLE_AUD_LEN, false);   // live microphone (MicStream.ino): notify only, 20 to 244 bytes
+BLECharacteristic bleSeiChar(BLE_SEI_UUID, BLERead | BLENotify, BLE_SEI_LEN, true);   // seismometer (Seismometer.ino)
 BLECharacteristic bleCmdChar(BLE_CMD_UUID, BLEWrite, BLE_CMD_LEN);     // the phone writes commands here (Remote.ino)
 
 bool bleStarted = false;               // BLE.begin() succeeded (done once, the first time Bluetooth is turned on)
@@ -541,6 +545,7 @@ uint8_t bleScreenId() {
     case TIMEZONE:       return 9;
     case DECLINATION_SETUP: return 17;
     case AUDIO_STREAM:   return 18;
+    case SEISMOMETER:    return 19;
     case REBOOT:         return 10;
     case IRSEND:         return 11;
     case IRRECEIVER:     return 12;
@@ -564,9 +569,17 @@ void bleReadBattery(int* mv, int* pct) {
   *pct = (int)(percentage + 0.5);
 }
 
+// Let the phone negotiate a bigger Bluetooth packet (ATT MTU) than the default 23 bytes: the live audio then sends 244-byte
+// packets instead of 20-byte ones. Needs an ArduinoBLE with ATT.setMaxMtu (the library's utility/ATT.h declares it).
+void bleAllowBigPackets() {
+  ATT.setMaxMtu(247);
+}
+
 bool bleBegin() {
   if (bleStarted) return true;
+  bleAllowBigPackets();                  // before and after begin(): whichever order this ArduinoBLE version needs
   if (!BLE.begin()) return false;
+  bleAllowBigPackets();
   BLE.setLocalName(BLE_DEVICE_NAME);
   BLE.setDeviceName(BLE_DEVICE_NAME);
   BLE.setAdvertisedService(bleService);
@@ -583,6 +596,7 @@ bool bleBegin() {
   bleService.addCharacteristic(bleCdtChar);
   bleService.addCharacteristic(bleIrrChar);
   bleService.addCharacteristic(bleAudChar);
+  bleService.addCharacteristic(bleSeiChar);
   bleService.addCharacteristic(bleCmdChar);
   BLE.addService(bleService);
 
@@ -600,6 +614,7 @@ bool bleBegin() {
   bleSwtChar.writeValue(zero, BLE_SWT_LEN);
   bleCdtChar.writeValue(zero, BLE_CDT_LEN);
   bleIrrChar.writeValue(zero, BLE_IRR_LEN);
+  bleSeiChar.writeValue(zero, BLE_SEI_LEN);
   bleStarted = true;
   return true;
 }
@@ -804,17 +819,25 @@ void bleSendIrRx() {
   bleSentCount++;
 }
 
+void bleSendSeismo() {
+  uint8_t pkt[BLE_SEI_LEN];
+  seisPacket(pkt);                      // Seismometer.ino fills it in
+  bleSeiChar.writeValue(pkt, BLE_SEI_LEN);
+  bleSentCount++;
+}
+
 // One packet of the live microphone stream (MicStream.ino). False if it could not be sent (Bluetooth off or no phone connected).
-bool bleSendAudioPacket(const uint8_t* pkt) {
+bool bleSendAudioPacket(const uint8_t* pkt, int len) {
   if (!bleEnabled || !bleConnected) return false;
-  bleAudChar.writeValue(pkt, BLE_AUD_LEN);
+  if (len < 1 || len > BLE_AUD_LEN) return false;
+  bleAudChar.writeValue(pkt, len);
   bleSentCount++;
   return true;
 }
 
-// ---- scheduler: the streams are numbered 0-11 ----
+// ---- scheduler: the streams are numbered 0-12 ----
 //   0 Environment  1 Position  2 Device  3 Motion  4 Sound  5 Spectrum  6 Fields  7 Shot  8 List  9 Stopwatch  10 Countdown
-//   11 IR Receive
+//   11 IR Receive  12 Seismometer
 
 // true while the Tricorder screen that feeds this stream is open
 bool bleStreamLive(int i) {
@@ -828,6 +851,7 @@ bool bleStreamLive(int i) {
     case 9:  return currentState == STOPWATCH;
     case 10: return currentState == COUNTDOWNTIMER;
     case 11: return currentState == IRRECEIVER;
+    case 12: return currentState == SEISMOMETER;
     default: return false;
   }
 }
@@ -851,6 +875,7 @@ void bleSendStream(int i) {
     case 9:  bleSendStopwatch(); break;
     case 10: bleSendCountdown(); break;
     case 11: bleSendIrRx(); break;
+    case 12: bleSendSeismo(); break;
   }
 }
 

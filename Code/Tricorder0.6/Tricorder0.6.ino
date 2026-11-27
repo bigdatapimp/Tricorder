@@ -105,15 +105,10 @@ enum State {
   STOPWATCH,
   COUNTDOWNTIMER,
   BLUETOOTH_SCREEN,
-  AUDIO_STREAM
+  AUDIO_STREAM,
+  SEISMOMETER
 };
 
-// --- Menu options ---
-const char* mainMenuOptions[5] = { "GEO", "ENV", "COMMS", "UTIL", "SYS" };
-const char* geoMenuOptions[3] = { "MDet", "EMF", "Nav" };
-const char* envMenuOptions[3] = { "Atmo", "dB", "Spec" };
-const char* utilMenuOptions[3] = { "Shot Timer", "Stopwatch", "Countdown" };
-const char* sysMenuOptions[4] = { "Batt", "Info", "Time Zone", "Reboot" };
 
 int mainMenuCursor = 0;  // 0-4 for main menu
 int subMenuCursor = 0;   // For submenu cursors
@@ -135,7 +130,7 @@ State lastLoopState = MAIN_MENU;  // used by loop() to detect state changes
 #define NEEDLE_LENGTH 9
 // Magnetic declination: east is POSITIVE, west is NEGATIVE. Middle Tennessee is west of the zero line,
 // so this should be NEGATIVE (a few degrees). Check your exact value at ngdc.noaa.gov/geomag/calculators
-#define DECLINATION -3.46  // board alignment +/- magnetic Declination
+#define DECLINATION -3.46  // Local Compass Magnetic Declination
 #define COMPASS_TAU 0.25  // heading smoothing time constant in seconds (bigger = smoother but slower)
 #define ACCEL_ALPHA 0.2   // accelerometer low-pass (0-1, smaller = smoother)
 #define MAG_CAL_MS 15000  // how long the magnetometer calibration samples for
@@ -319,6 +314,9 @@ void loop() {
     case EMFMETER:
       //tft.fillScreen(BLACK);
       EMFMeter(pressType);
+      break;
+    case SEISMOMETER:
+      Seismometer(pressType);
       break;
     case NAVIGATION:
       //tft.fillScreen(BLACK);

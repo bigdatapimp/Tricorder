@@ -2,12 +2,16 @@
 //
 // The phone's Live Audio screen asks for this (Remote.ino, command 8). The Tricorder opens its "LIVE AUDIO" screen, takes the
 // PDM microphone that is already running (16 kHz), and sends it over Bluetooth as small packets:
-//   16 kHz microphone -> DC blocker -> low-pass and halve to 8 kHz -> IMA ADPCM, 4 bits a sample (4,000 bytes a second)
-//   -> 20-byte packets of 32 samples (4 ms of sound), 250 packets a second on the Audio characteristic.
-// Each packet starts with the encoder's state, so a lost packet costs 4 ms of sound and nothing else.
+//   16 kHz microphone -> DC blocker -> low-pass and divide the rate by 2, 3 or 4 -> IMA ADPCM, 4 bits a sample
+//   -> packets on the Audio characteristic. The phone chooses the quality and the packet size (protocol v12):
+//        quality 0: 8 kHz    1: 5.33 kHz    2: 4 kHz    3: 16 kHz (the microphone as it is, about 33 packets a second of 244 bytes)
+//        packet size: 20 bytes (the Bluetooth default, 250 packets a second at 8 kHz) up to 244 bytes (about 17 a second), whatever
+//        the phone and the Tricorder agreed on as the largest Bluetooth packet (ATT MTU, see ATT.setMaxMtu in Bluetooth.ino).
+//   A Bluetooth link that cannot carry that many packets a second loses some: bigger packets fix that.
+// Each packet starts with the encoder's state, so a lost packet costs only its own sound (4 ms in a 20-byte packet, 60 ms in 244).
 //
-//   Packet (20 bytes):  0 sequence number (counts up, wraps at 256)   1-2 predictor (int16, little endian)
-//                       3 step index (0-88)                           4-19 32 samples, 4 bits each, low nibble first
+//   Packet (4 + 8 x size bytes, 20 to 244):  0 sequence number (counts up, wraps at 256)   1-2 predictor (int16, little endian)
+//                       3 step index (0-88)    4-end: 2 samples a byte (4 bits each), low nibble first
 //
 // If the link cannot keep up, the oldest packets are thrown away (the sound jumps ahead) rather than letting the delay grow.
 // The stream stops by itself when LEFT is pressed, the phone says stop, the phone disconnects or remote control is switched off.
@@ -16,9 +20,9 @@
 
 #define MIC_RING_FRAMES      24       // 24 x 16 ms = 384 ms of microphone buffering while the link is busy
 #define MIC_FRAME_MAX        256
-#define MIC_PKT_LEN          20
-#define MIC_SAMPLES_PER_PKT  32
-#define MIC_PKT_QUEUE        64       // 64 x 4 ms = 256 ms of packets waiting for the link
+#define MIC_PKT_MAX          244      // the largest packet: a 247-byte Bluetooth packet less 3 bytes of header
+#define MIC_PKT_QUEUE        40       // packet slots (about 10 KB); micQueueLimit of them are used, so the queue holds about 300 ms
+#define MIC_QUEUE_MS         300
 #define MIC_SEND_PER_PASS    8        // packets handed to Bluetooth per pass of loop(), so the buttons stay responsive
 #define MIC_GAIN             1.0f     // digital gain on top of PDM.setGain() in setup()
 
@@ -54,6 +58,8 @@ static const int16_t micStepTable[89] = {
 };
 static const int8_t micIndexTable[16] = {-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8};
 
+int micDecim = 2;                                 // 16 kHz divided by this: 1 = 16 kHz, 2 = 8 kHz, 3 = 5.33 kHz, 4 = 4 kHz
+
 int micPred = 0;                                  // encoder state: the value the decoder will have reached
 int micIdx = 0;                                   // and its step index
 
@@ -81,12 +87,17 @@ uint8_t micEncodeSample(int sample) {
 
 // ----------------------- 16 kHz -> 8 kHz, samples -> packets -----------------------
 float micHpX = 0.0f, micHpY = 0.0f;               // DC blocker (the PDM microphone has an offset)
-float micH1 = 0.0f, micH2 = 0.0f;                 // low-pass history
-bool  micPhase = false;                           // every second input sample becomes an output sample
-short micFifo[MIC_SAMPLES_PER_PKT + 16];          // 8 kHz samples waiting to fill a packet
+float micH1 = 0.0f, micH2 = 0.0f;                 // low-pass history (divide by 2)
+bool  micPhase = false;                           // every second input sample becomes an output sample (divide by 2)
+float micAcc = 0.0f;                              // running sum of the samples being averaged (divide by 3 or 4)
+int   micAccN = 0;
+int   micPktLen = 20;                             // bytes in a packet, set by the phone: 4 + 8 x size, 20 to 244
+int   micSamplesPerPkt = 32;                      // 2 samples a byte after the 4-byte header
+int   micQueueLimit = MIC_PKT_QUEUE - 2;          // most packets kept waiting for the link (about MIC_QUEUE_MS)
+short micFifo[2 * (MIC_PKT_MAX - 4) + 16];        // samples waiting to fill a packet
 int   micFifoN = 0;
 uint8_t micSeq = 0;
-uint8_t micPkt[MIC_PKT_QUEUE][MIC_PKT_LEN];       // finished packets waiting for the link
+uint8_t micPkt[MIC_PKT_QUEUE][MIC_PKT_MAX];       // finished packets waiting for the link
 int   micPktHead = 0;                             // next free slot
 int   micPktTail = 0;                             // next packet to send
 unsigned long micPktMade = 0;
@@ -95,23 +106,23 @@ unsigned long micPktDropped = 0;                  // thrown away because the lin
 
 int micPktQueued() { return (micPktHead - micPktTail + MIC_PKT_QUEUE) % MIC_PKT_QUEUE; }
 
-// Make one packet from the first 32 samples in the FIFO
+// Make one packet from the samples in the FIFO (micSamplesPerPkt of them)
 void micMakePacket() {
   uint8_t* p = micPkt[micPktHead];
   p[0] = micSeq++;
   p[1] = (uint8_t)(micPred & 0xFF);
   p[2] = (uint8_t)((micPred >> 8) & 0xFF);
   p[3] = (uint8_t)micIdx;
-  for (int i = 0; i < MIC_SAMPLES_PER_PKT; i += 2) {
+  for (int i = 0; i < micSamplesPerPkt; i += 2) {
     uint8_t lo = micEncodeSample(micFifo[i]);
     uint8_t hi = micEncodeSample(micFifo[i + 1]);
     p[4 + i / 2] = (uint8_t)(lo | (hi << 4));
   }
-  micFifoN -= MIC_SAMPLES_PER_PKT;
-  for (int i = 0; i < micFifoN; i++) micFifo[i] = micFifo[i + MIC_SAMPLES_PER_PKT];
+  micFifoN -= micSamplesPerPkt;
+  for (int i = 0; i < micFifoN; i++) micFifo[i] = micFifo[i + micSamplesPerPkt];
   micPktMade++;
   micPktHead = (micPktHead + 1) % MIC_PKT_QUEUE;
-  if (micPktHead == micPktTail) {                 // queue full: the oldest packet goes
+  while (micPktQueued() > micQueueLimit) {        // queue full: the oldest packet goes
     micPktTail = (micPktTail + 1) % MIC_PKT_QUEUE;
     micPktDropped++;
   }
@@ -122,16 +133,27 @@ void micProcessSample(short s) {
   float y = x - micHpX + 0.995f * micHpY;         // DC blocker
   micHpX = x;
   micHpY = y;
-  float lp = (y + 2.0f * micH1 + micH2) * 0.25f;  // [1 2 1] / 4: keeps most of what is below 4 kHz, softens what would alias
-  micH2 = micH1;
-  micH1 = y;
-  micPhase = !micPhase;
-  if (!micPhase) return;
+  float lp;
+  if (micDecim == 1) {
+    lp = y;                                       // 16 kHz: the microphone's own rate, nothing to remove
+  } else if (micDecim == 2) {
+    lp = (y + 2.0f * micH1 + micH2) * 0.25f;      // [1 2 1] / 4: keeps most of what is below 4 kHz, softens what would alias
+    micH2 = micH1;
+    micH1 = y;
+    micPhase = !micPhase;
+    if (!micPhase) return;
+  } else {
+    micAcc += y;                                  // the average of 3 or 4 samples is the low-pass for the lower rates
+    if (++micAccN < micDecim) return;
+    lp = micAcc / (float)micDecim;
+    micAcc = 0.0f;
+    micAccN = 0;
+  }
   lp *= MIC_GAIN;
   if (lp > 32767.0f) lp = 32767.0f;
   if (lp < -32768.0f) lp = -32768.0f;
   micFifo[micFifoN++] = (short)lp;
-  if (micFifoN >= MIC_SAMPLES_PER_PKT) micMakePacket();
+  if (micFifoN >= micSamplesPerPkt) micMakePacket();
 }
 
 void micStreamReset() {
@@ -140,12 +162,21 @@ void micStreamReset() {
   micRingDropped = 0;
   micHpX = micHpY = micH1 = micH2 = 0.0f;
   micPhase = false;
+  micAcc = 0.0f;
+  micAccN = 0;
   micFifoN = 0;
   micPred = 0;
   micIdx = 0;
   micSeq = 0;
   micPktHead = micPktTail = 0;
   micPktMade = micPktSent = micPktDropped = 0;
+  // the packet queue holds about MIC_QUEUE_MS of sound, whatever the packet size
+  long fs = (micDecim == 1) ? 16000 : (micDecim == 2) ? 8000 : (micDecim == 3) ? 5333 : 4000;
+  long packetMs = (long)micSamplesPerPkt * 1000L / fs;
+  long limit = MIC_QUEUE_MS / (packetMs > 0 ? packetMs : 1);
+  if (limit < 3) limit = 3;
+  if (limit > MIC_PKT_QUEUE - 2) limit = MIC_PKT_QUEUE - 2;     // one slot always stays empty (full looks like empty), and one more while a packet is added
+  micQueueLimit = (int)limit;
 }
 
 // Turn the microphone frames into packets and hand a few packets to Bluetooth. Called on every pass of loop() while streaming.
@@ -158,7 +189,7 @@ void micStreamPump() {
   }
   int sent = 0;
   while (micPktTail != micPktHead && sent < MIC_SEND_PER_PASS) {
-    if (!bleSendAudioPacket(micPkt[micPktTail])) break;       // not connected, or Bluetooth is off
+    if (!bleSendAudioPacket(micPkt[micPktTail], micPktLen)) break;       // not connected, or Bluetooth is off
     micPktTail = (micPktTail + 1) % MIC_PKT_QUEUE;
     micPktSent++;
     sent++;
@@ -170,9 +201,14 @@ bool micStopRequested = false;                    // the phone said stop
 
 bool micStreamActive() { return micStreamOn; }
 
-// The phone asked to start (Remote.ino): open the screen
-void micStreamStartFromPhone() {
+// The phone asked to start (Remote.ino) at this quality (0 = 8 kHz, 1 = 5.33 kHz, 2 = 4 kHz, 3 = 16 kHz) with packets of 4 + 8 x size8 bytes
+// (size8 2 to 30, so 20 to 244 bytes; anything else means 20): open the screen
+void micStreamStartFromPhone(int quality, int size8) {
   if (currentState == AUDIO_STREAM) return;
+  micDecim = (quality == 1) ? 3 : (quality == 2) ? 4 : (quality == 3) ? 1 : 2;
+  if (size8 < 2 || size8 > 30) size8 = 2;
+  micPktLen = 4 + 8 * size8;
+  micSamplesPerPkt = 2 * (micPktLen - 4);
   tft.fillScreen(BLACK);
   currentState = AUDIO_STREAM;
 }
@@ -197,7 +233,8 @@ void micDrawOled() {
   lcoRow(0, "SENT", buf);
   snprintf(buf, sizeof(buf), "%lu", micPktDropped + micRingDropped);
   lcoRow(1, "LOST", buf);
-  lcoTextAt(9, 40, "8 KHZ ADPCM", 19);
+  snprintf(buf, sizeof(buf), "%s %dB", micDecim == 1 ? "16 KHZ" : micDecim == 2 ? "8 KHZ" : micDecim == 3 ? "5.3 KHZ" : "4 KHZ", micPktLen);
+  lcoTextAt(9, 40, buf, 19);
   lcoTextAt(9, 54, "LEFT = STOP", 19);
   display.display();
 }

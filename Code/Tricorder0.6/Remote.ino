@@ -12,7 +12,9 @@
 //                          6 Hawaii), exactly as ENTER does on the Time Zone screen; it is saved if flash allows
 //   [7, lo, hi, 0]         set the compass declination: a signed 16-bit number (little endian) of hundredths of a degree,
 //                          east positive, -4500 to 4500; used and saved exactly as ENTER does on the Declination screen
-//   [8, 1, 0, 0] / [8, 0, 0, 0]   start / stop the live microphone stream: the Tricorder opens its LIVE AUDIO screen and sends the
+//   [8, 1, q, s] / [8, 0, 0, 0]   start / stop the live microphone stream, quality q = 0 (8 kHz), 1 (5.33 kHz), 2 (4 kHz) or 3 (16 kHz), packets
+//                          of 4 + 8 x s bytes (s 2 to 30, so 20 to 244): the
+//                          Tricorder opens its LIVE AUDIO screen and sends the
 //                          microphone on the Audio characteristic (MicStream.ino); it stops when the phone says so, LEFT is
 //                          pressed on the Tricorder, the phone disconnects or remote control is switched off
 //   [6, 0x52, 0x42, 0x54]  reboot the Tricorder. The three extra bytes ("RBT") are a confirmation: a command that
@@ -65,7 +67,7 @@ bool remoteIsOn() { return remoteEnabled; }     // for the tabs that sort before
 
 // A script is a few steps run one at a time. Step kinds: 0 short press, 1 long press (arg = button 1-5),
 // 2 put the main menu cursor on item 'arg', 3 put the submenu cursor on item 'arg', 4 send IR code 'arg' (select
-// that option on the IR Send screen and press ENTER; only while that screen is open), 5 open the Live Audio screen.
+// that option on the IR Send screen and press ENTER; only while that screen is open), 5 open the Live Audio screen (arg = quality + 4 x packet size).
 uint8_t remoteStepKind[REMOTE_MAX_STEPS];
 uint8_t remoteStepArg[REMOTE_MAX_STEPS];
 int remoteStepCount = 0;
@@ -146,6 +148,7 @@ bool remoteLocate(int screenId, int* category, int* item) {
     case 2:  *category = 0; *item = 0; return true;   // Metal Detector
     case 3:  *category = 0; *item = 1; return true;   // EMF Meter
     case 1:  *category = 0; *item = 2; return true;   // Navigation
+    case 19: *category = 0; *item = 3; return true;   // Seismometer
     case 4:  *category = 1; *item = 0; return true;   // Atmospheric
     case 5:  *category = 1; *item = 1; return true;   // dB Meter
     case 6:  *category = 1; *item = 2; return true;   // Spectrum
@@ -244,7 +247,10 @@ void remoteHandleCommand(const uint8_t* d, int n) {
       if (remoteLeaveBlocked()) { remoteLog("ignored: finish or cancel what is open on IR Receive first", d, n); return; }
       if (currentState == AUDIO_STREAM) { remoteLog("nothing to do: the live audio is already on", d, n); return; }
       remoteBuildGoto(0);                                  // back out to the main menu (does nothing if it is there already)
-      remoteAddStep(5, 0);                                 // then open the Live Audio screen
+      // then open the Live Audio screen at the quality asked for (d[2]) and the packet size (d[3], in 8-byte units, 0 = 20 bytes)
+      uint8_t quality = (n >= 3 && d[2] <= 3) ? d[2] : 0;
+      uint8_t size8 = (n >= 4 && d[3] >= 2 && d[3] <= 30) ? d[3] : 2;
+      remoteAddStep(5, (uint8_t)(quality | (size8 << 2)));
       remoteNextMs = millis();
       remoteLog("accepted: live audio starting", d, n);
     }
@@ -300,8 +306,8 @@ int remoteApply(int pressType, int rawButton) {
     lastButton = 1;                                         // ... and press ENTER, in one step so that quick
     return SHORT_PRESS;                                     //     successive taps can't cut each other short
   }
-  if (kind == 5) {                                          // open the Live Audio screen
-    micStreamStartFromPhone();
+  if (kind == 5) {                                          // open the Live Audio screen (arg = quality + 4 x packet size in 8-byte units)
+    micStreamStartFromPhone(arg & 3, arg >> 2);
     return pressType;
   }
   if (kind == 2) {

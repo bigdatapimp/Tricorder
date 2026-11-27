@@ -5,17 +5,17 @@
 // ---- GEO Submenu ----
 void handleGeoMenu(int pressType) {
   if (menuDirty) {
-    lcoDrawMenu("GEOLOGICAL", lcGeoNames, 3, subMenuCursor);
+    lcoDrawMenu("GEOLOGICAL", lcGeoNames, 4, subMenuCursor);
     menuDirty = false;
   }
   displayGPSClock();
 
   if (pressType == SHORT_PRESS) {
     if (lastButton == 2) { // Up
-      subMenuCursor = (subMenuCursor - 1 + 3) % 3;
+      subMenuCursor = (subMenuCursor - 1 + 4) % 4;
       menuDirty = true;
     } else if (lastButton == 4) { // Down
-      subMenuCursor = (subMenuCursor + 1) % 3;
+      subMenuCursor = (subMenuCursor + 1) % 4;
       menuDirty = true;
     } else if (lastButton == 1) { // Enter
       tft.fillScreen(BLACK);
@@ -23,6 +23,7 @@ void handleGeoMenu(int pressType) {
         case 0: currentState = METALDETECTOR; break;
         case 1: currentState = EMFMETER; break;
         case 2: currentState = NAVIGATION; break;
+        case 3: currentState = SEISMOMETER; break;
       }
     }
   } else if (pressType == LONG_PRESS && lastButton == 5) { // Long Left to exit

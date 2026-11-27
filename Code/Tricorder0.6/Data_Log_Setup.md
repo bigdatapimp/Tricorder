@@ -74,6 +74,9 @@ Since this update the screen tells you why. The usual causes, in order:
 ## What is recorded
 One row every 1, 2, 5, 10, 30, 60 or 300 s, while the Tricorder is connected:
 time (UTC), latitude, longitude, altitude, speed, course, satellites, HDOP, fix age, temperature, humidity, pressure,
-battery, and the compass heading (only while the Navigation screen is open on the Tricorder). A value that is not
+battery, the compass heading (only while the Navigation screen is open on the Tricorder), and the seismometer's strongest shake
+since the previous row and its average shaking over the same time, in mg (columns `seismic_peak_mg` and `seismic_rms_mg`; only
+while the Seismometer screen is open on the Tricorder). Recordings made before these two columns existed still open and export
+as before. A value that is not
 available (no GPS fix, an old packet) is left empty. Nothing is written while the link is down; recording carries on by
 itself when the app has reconnected.

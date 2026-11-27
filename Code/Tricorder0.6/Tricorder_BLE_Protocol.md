@@ -1,4 +1,4 @@
-# Tricorder BLE Protocol, version 10
+# Tricorder BLE Protocol, version 13
 
 This is the contract between the Tricorder firmware (`Bluetooth.ino`) and any phone app. If either side changes
 it, change this document first.
@@ -26,7 +26,8 @@ two's complement.
 | Device | `3f5a0003-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 20 bytes (19 in protocol v6 and v7, 16 in v5) |
 | Motion | `3f5a0004-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 12 bytes (10 in protocol v8 and older) |
 | Sound | `3f5a0005-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 10 bytes |
-| Audio | `3f5a000e-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 20 bytes, notify only (protocol v10) |
+| Audio | `3f5a000e-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 20 to 244 bytes, notify only (protocol v10, v11 added the quality choice, v12 the larger packets) |
+| Seismometer | `3f5a000f-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 12 bytes (protocol v13) |
 | Spectrum | `3f5a0006-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 20 bytes |
 | Fields | `3f5a0007-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 12 bytes |
 | Shot | `3f5a0008-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 10 bytes |
@@ -82,7 +83,7 @@ Trust a field only when its flag bit is set. Latitude/longitude: divide by 10,00
 | 3 | uint8 | active screen id | see below |
 | 4 | uint32 | device uptime | ms |
 | 8 | uint32 | largest free memory block | bytes |
-| 12 | uint8 | protocol version | currently 10 |
+| 12 | uint8 | protocol version | currently 13 |
 | 13 | uint8 | flags | bit 0 remote control is switched on at the Tricorder, bit 1 the Tricorder is still carrying out the last remote command, bit 2 remote control is on but the sketch's `loop()` never applies the commands (the `remoteApply()` line is missing), bit 3 the time zone in use is saved in flash (otherwise it is lost at power-off; protocol v8) |
 | 14 | uint16 | firmware version x 1000 | 600 = firmware 0.6; `0xFFFF` = unknown |
 | 16 | uint24 | IR codes that exist (protocol v6) | bit n set = IR code n (see Remote control) has a code on the Tricorder. A key whose bit is clear should be greyed out. Bits 0-11 are set until a remote is cloned; bits 12-16 (Eject, Play, Stop, Pause, Menu) are clear until then. A protocol v5 Tricorder sends only the first 16 bytes: treat codes 0-11 as present and the rest as absent. |
@@ -239,6 +240,25 @@ The clone asks for the buttons in this order (button numbers): 0 Power, 1 Vol Up
 6 Left, 7 Right, **9 Up, 8 Down**, 10 Amazon, 11 YouTube, 12 Eject, 13 Play, 14 Stop, 15 Pause, 16 Menu. A button
 that has been passed (prompt higher than its position) and has no bit in the progress mask was skipped.
 
+### Seismometer (12 bytes, protocol v13)
+Characteristic `3f5a000f-...`. Sent 5 times a second while the Seismometer screen is open on the Tricorder (screen id 19), otherwise every
+2 seconds. "Shaking" is the size of the acceleration left after the slowly changing part (gravity) has been taken away, in
+any direction, in mg (thousandths of a g).
+
+| Offset | Type | Field | Notes |
+|---|---|---|---|
+| 0 | uint8 | flags | bit 0 the screen has run at least once (valid), bit 1 live (open and updating), bit 2 an event is active, bit 3 getting ready (the first 5 seconds after opening or after a long ENTER: ignore the numbers) |
+| 1 | uint8 | sensitivity | 0-7: the full scale of the Tricorder's seismograph, 2, 5, 10, 20, 50, 100, 200, 500 mg |
+| 2 | uint16 | shaking now | RMS over about the last second, hundredths of a mg (65535 = 655 mg or more) |
+| 4 | uint16 | strongest shake since the last packet | tenths of a mg (65535 = 6553 mg or more). A short jolt between two packets is never missed. |
+| 6 | uint16 | strongest shake since reset | tenths of a mg |
+| 8 | uint16 | events since reset | an event is a quarter second whose strongest shake is more than 5 times the noise floor (and at least 5 mg) |
+| 10 | uint16 | noise floor | hundredths of a mg: the slow average of the quiet level |
+
+The phone app logs, for each row of its data log, the strongest shake (the largest "since the last packet" value of that
+interval) and the average shaking (the root mean square of "shaking now" over the packets of that interval), but only from
+packets that are live.
+
 ## Remote control
 
 The phone can press the Tricorder's buttons and open its screens by writing 4-byte commands to the **Command**
@@ -247,13 +267,13 @@ exactly as if the button had been pressed on the device.
 
 | Byte | Meaning |
 |---|---|
-| 0 | command: 1 = BUTTON, 2 = GOTO, 3 = IR, 4 = IR RECEIVE (protocol v7), 5 = TIME ZONE, 6 = REBOOT (protocol v8), 7 = DECLINATION (protocol v9), 8 = LIVE AUDIO (protocol v10) |
+| 0 | command: 1 = BUTTON, 2 = GOTO, 3 = IR, 4 = IR RECEIVE (protocol v7), 5 = TIME ZONE, 6 = REBOOT (protocol v8), 7 = DECLINATION (protocol v9), 8 = LIVE AUDIO (protocol v10, quality byte in v11, packet size byte in v12) |
 | 1 | BUTTON: button, 1 ENTER, 2 UP, 3 RIGHT, 4 DOWN, 5 LEFT. GOTO: screen id (0 = the main menu). IR: the code number (0-16, below). IR RECEIVE: the action, 1 start a clone, 2 open the IR data view, 3 back to the IR Receive menu. TIME ZONE: the zone 0-6 (see the Device packet). REBOOT: `0x52` |
 | 2 | BUTTON: 0 = short press, 1 = long press. REBOOT: `0x42`. Otherwise 0 |
 | 3 | REBOOT: `0x54`. Otherwise 0 |
 
 - **GOTO** may open: Navigation (1), Metal Detector (2), EMF Meter (3), Atmospheric (4), dB Meter (5), Spectrum (6),
-  Battery (7), System Info (8), IR Send (11), IR Receive (12), Shot Timer (13), Stopwatch (14), Countdown (15), and the main menu (0).
+  Battery (7), System Info (8), IR Send (11), IR Receive (12), Shot Timer (13), Stopwatch (14), Countdown (15), Seismometer (19), and the main menu (0).
   Opening IR Send transmits nothing. The Tricorder
   backs out to its main menu and walks to the screen with a few presses; this takes under a second, during which the
   Device flags report *busy*.
@@ -269,7 +289,7 @@ exactly as if the button had been pressed on the device.
   Declination screen (it is saved to flash if the core allows; Motion flags 2 bit 0 says whether it was). The command is
   `07 lo hi 00`: bytes 1 and 2 are a signed 16-bit number (little endian) of hundredths of a degree, east positive. A value
   outside -4500 to 4500 is ignored. It works whatever screen the Tricorder is on.
-- **LIVE AUDIO** (command 8) starts or stops the live microphone stream: `08 01 00 00` starts, `08 00 00 00` stops. The Tricorder
+- **LIVE AUDIO** (command 8) starts or stops the live microphone stream: `08 01 q s` starts, `08 00 00 00` stops. `q` is the quality (protocol v11): 0 = 8 kHz, 1 = 5.33 kHz, 2 = 4 kHz, 3 = 16 kHz (protocol v12; needs big packets, about 33 a second; anything else means 0). `s` is the packet size (protocol v12): each packet is `4 + 8 x s` bytes long, `s` from 2 (20 bytes, also what 0 and any other value mean) to 30 (244 bytes). The phone must only ask for a size that fits in what the Bluetooth link allows: `s` such that `4 + 8 x s` is at most the ATT MTU minus 3 (a phone that has negotiated MTU 247 can ask for 30). The Tricorder accepts an MTU up to 247 (`ATT.setMaxMtu(247)`); the Android app asks for it with `requestMtu(247)` when it starts listening and reads the granted value in `onMtuChanged`. The Tricorder
   opens its LIVE AUDIO screen (screen id 18) and sends packets on the Audio characteristic until the phone says stop, LEFT is
   pressed on the Tricorder, the phone disconnects, or remote control is switched off. The phone cannot press buttons on that screen
   other than LEFT. The phone should ask for a short connection interval while it listens.
@@ -325,6 +345,7 @@ Typical buttons on each screen (what the Tricorder's own buttons do there):
 | 7 | Battery | 16 | Bluetooth |
 | 8 | System Info | 17 | Declination |
 | | | 18 | Live Audio |
+| | | 19 | Seismometer |
 | | | 255 | anything else |
 
 ## Example packets (for checking what the phone shows)
@@ -375,6 +396,10 @@ These are real outputs from the firmware's packing code for the inputs shown.
 - Leq `0x0267` = 615 -> **61.5 dB**, peak `0x0419` = 1049 -> **104.9 dB**
 - flags `0x0d`: A-weighted, Fast, live, valid
 
+**Seismometer**: `03 05 41 01  7b 00  c8 01  03 00  7d 00`
+
+- flags `0x03` live and valid, sensitivity 5 (100 mg full scale), shaking now `0x0141` = 321 -> **3.21 mg**, strongest since the last packet `0x007b` = 123 -> **12.3 mg**, since reset `0x01c8` = 456 -> **45.6 mg**, 3 events, noise floor `0x007d` = 125 -> **1.25 mg**
+
 **Spectrum**: `00 46 47 5f 7d fe 00 00 04 0e 19 22 2c 36 41 4a  e8 03  47  03`
 
 - band levels 0, 70, 71, 95, 125, 254, 0, 0, 4, 14, 25, 34, 44, 54, 65, 74 dB
@@ -414,6 +439,7 @@ These are real outputs from the firmware's packing code for the inputs shown.
 - `02 00 00 00`: GOTO the main menu
 - `03 0a 00 00`: IR, code 10 (Amazon)
 - `03 01 00 00`: IR, code 1 (VOL+)
+- `02 13 00 00`: GOTO screen 19 (Seismometer)
 
 **Device** with remote control on: `ac 0f 57 05  00 5e d0 b2  20 bf 02 00  08  01  58 02  ff 0f 00  01` (byte 13 = `01`).
 
@@ -431,18 +457,21 @@ These are real outputs from the firmware's packing code for the inputs shown.
 6. Disconnect in the app, then connect again, to confirm the Tricorder re-advertises.
 
 
-## Audio (protocol v10)
-Characteristic `3f5a000e-7c2b-4e6d-a1b3-5d8e9c0f1a20`, notify only, 20 bytes, about 250 packets a second while streaming (nothing
-otherwise). The sound is the Tricorder's microphone, 8 kHz mono, IMA ADPCM at 4 bits a sample.
+## Audio (protocol v10, larger packets in v12)
+Characteristic `3f5a000e-7c2b-4e6d-a1b3-5d8e9c0f1a20`, notify only, 20 to 244 bytes (it is a variable-length characteristic), while
+streaming (nothing otherwise). The sound is the Tricorder's microphone, mono, IMA ADPCM at 4 bits a sample, at the rate the phone
+asked for: 8 kHz, 5.33 kHz, 4 kHz or 16 kHz. The packets do not say which rate or size was asked for; the phone knows (the size is
+simply the length of the notification). With the default 23-byte ATT MTU only 20-byte packets fit (250 a second at 8 kHz, more
+than many phones' links carry); with MTU 247 a 244-byte packet carries 480 samples (60 ms at 8 kHz) and only about 17 are needed a second.
 
 | Offset | Type | Field | Notes |
 |---|---|---|---|
 | 0 | uint8 | sequence number | counts up and wraps at 256; a jump means packets were lost or dropped |
 | 1 | int16 | predictor | the decoder's value before the first sample of this packet |
 | 3 | uint8 | step index | 0 to 88, the decoder's step index before the first sample |
-| 4 | 16 bytes | 32 samples | 4 bits each, the low nibble is the earlier sample |
+| 4 | N bytes | 2 N samples | 4 bits each, the low nibble is the earlier sample; N = packet length - 4 (16 to 240) |
 
 Because every packet carries its own predictor and step index, a decoder can start from any packet, and a lost packet only
-loses the 4 ms it held. Decoding of one sample (standard IMA ADPCM): `step = STEP[index]; vp = step>>3; if (code&4) vp += step;
+loses the sound it held (4 ms in a 20-byte packet, 60 ms in a 244-byte one at 8 kHz). Decoding of one sample (standard IMA ADPCM): `step = STEP[index]; vp = step>>3; if (code&4) vp += step;
 if (code&2) vp += step>>1; if (code&1) vp += step>>2; predictor += (code&8) ? -vp : vp` (clamped to int16), then
 `index += INDEX[code]` (clamped to 0..88), with the usual IMA tables (see `LiveAudio.kt` or `MicStream.ino`).

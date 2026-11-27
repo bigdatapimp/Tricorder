@@ -19,7 +19,7 @@ void invalidateClockCache() {
 
 // The long names shown for the items of each menu (the OLED lists the short ones)
 const char* const lcMainNames[5]  = {"GEOLOGICAL", "ENVIRONMENTAL", "COMMUNICATIONS", "UTILITY", "SYSTEM"};
-const char* const lcGeoNames[3]   = {"METAL DETECTOR", "EMF METER", "NAVIGATION"};
+const char* const lcGeoNames[4]   = {"METAL DETECTOR", "EMF METER", "NAVIGATION", "SEISMOMETER"};
 const char* const lcEnvNames[3]   = {"ATMOSPHERIC", "dB METER", "SPECTRUM"};
 const char* const lcCommsNames[3] = {"BLUETOOTH", "IR SEND", "IR RECEIVE"};
 const char* const lcUtilNames[3]  = {"SHOT TIMER", "STOPWATCH", "COUNTDOWN"};
@@ -31,7 +31,7 @@ bool lcMenuInfo(const char** title, const char** item, int* index, int* count, b
   *highlight = false;
   switch (currentState) {
     case MAIN_MENU:  *title = "MAIN MENU"; *count = 5; *index = mainMenuCursor; break;
-    case GEO_MENU:   *title = "GEO";       *count = 3; *index = subMenuCursor;  break;
+    case GEO_MENU:   *title = "GEO";       *count = 4; *index = subMenuCursor;  break;
     case ENV_MENU:   *title = "ENV";       *count = 3; *index = subMenuCursor;  break;
     case COMMS_MENU: *title = "COMMS";     *count = 3; *index = subMenuCursor;  break;
     case UTIL_MENU:  *title = "UTIL";      *count = 3; *index = subMenuCursor;  break;
