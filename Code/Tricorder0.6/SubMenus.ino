@@ -95,17 +95,17 @@ void handleCommsMenu(int pressType) {
 // ---- SYS Submenu ----
 void handleSysMenu(int pressType) {
   if (menuDirty) {
-    lcoDrawMenu("SYSTEM", lcSysNames, 4, subMenuCursor);
+    lcoDrawMenu("SYSTEM", lcSysNames, 5, subMenuCursor);
     menuDirty = false;
   }
   displayGPSClock();
 
   if (pressType == SHORT_PRESS) {
     if (lastButton == 2) { // Up
-      subMenuCursor = (subMenuCursor - 1 + 4) % 4;
+      subMenuCursor = (subMenuCursor - 1 + 5) % 5;
       menuDirty = true;
     } else if (lastButton == 4) { // Down
-      subMenuCursor = (subMenuCursor + 1) % 4;
+      subMenuCursor = (subMenuCursor + 1) % 5;
       menuDirty = true;
     } else if (lastButton == 1) { // Enter
       tft.fillScreen(BLACK);
@@ -113,7 +113,8 @@ void handleSysMenu(int pressType) {
         case 0: currentState = BATTERY; break;
         case 1: currentState = SYSINFO; break;
         case 2: currentState = TIMEZONE; break;
-        case 3: currentState = REBOOT; break;
+        case 3: currentState = DECLINATION_SETUP; break;
+        case 4: currentState = REBOOT; break;
       }
     }
   } else if (pressType == LONG_PRESS && lastButton == 5) { // Long Left to exit

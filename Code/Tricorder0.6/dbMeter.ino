@@ -451,7 +451,7 @@ void DBMeter(int pressType) {
     int baseY = DB_GRAPH_TOP + DB_GRAPH_H;
     for (int x = 0; x < DB_GRAPH_W; x++) {
       int h = dbHist[(dbHistHead + (DB_HIST_W - DB_GRAPH_W) + x) % DB_HIST_W];
-      display.drawFastVLine(LCO_CONTENT_X + x, baseY - h, h + 1, SSD1306_WHITE);
+      display.drawFastVLine(9 + x, baseY - h, h + 1, SSD1306_WHITE);
     }
 
     char line[16];

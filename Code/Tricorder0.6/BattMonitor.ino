@@ -67,22 +67,17 @@ void Battery(int pressType) {
     if (percentage > 100) percentage = 100;
 
     
+    // the OLED in the LCARS look (see LcarsOled.ino): voltage, charge, a bar and the verdict
     display.clearDisplay();
-    display.setCursor(0, 9);
-    display.println(F("Battery Status"));
-    display.setCursor(0, 20);
-    display.print(F("Voltage: "));
-    display.print(voltage, 2);
-    display.println(F(" V"));
-    display.setCursor(0, 35);
-    display.print(F("Battery: "));
-    display.print(percentage, 1);
-    display.println(F(" %"));
-
-    // Optional: Add a battery bar
-    int barWidth = map(percentage, 0, 100, 0, SCREEN_WIDTH - 20);
-    display.fillRect(0, 50, barWidth, 10, SSD1306_WHITE);
-
+    lcoFrame("BATTERY", NULL);
+    char v[16];
+    snprintf(v, sizeof(v), "%.2f V", voltage);
+    lcoRow(0, "VOLT", v);
+    snprintf(v, sizeof(v), "%.1f %%", percentage);
+    lcoRow(1, "CHARGE", v);
+    lcoBar(9, 38, BATT_SEGS, battLitSegments(percentage), 3, 6, 5);
+    int pctNow = (int)(percentage + 0.5);
+    lcoBlock(48, 10, pctNow > 40 ? "GOOD" : (pctNow > 20 ? "LOW" : "CRITICAL"), pctNow <= 40);
     display.display();
     battDrawTft(voltage, percentage, !tftReady);
     tftReady = true;

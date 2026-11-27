@@ -101,46 +101,128 @@ void atmoDrawPressRow(int y, float shown, float hPa, bool valid) {
   atmoDrawBar(y + 8, valid ? atmoLitPressure(hPa) : 0);
 }
 
-// ---- the OLED (LCARS look, see LcarsOled.ino): temperature, dew point, humidity with a bar, pressure, and the keys that change
-// the units. Readings that are not usable show --.
-void atmoDrawOled(float temp, const char* tempUnit, float dew, bool dewOk, float humidity, float pressure, const char* presUnit) {
-  char buf[20];
+// ---- the OLED (LCARS look, see LcarsOled.ino): the humidity bar and a weather icon under it ----
+//
+// The icon follows a "cloudiness" score from 0 to 1 that adds up three things:
+//   humidity                       40 %   nothing at 30 % or less, all of it at 100 %
+//   the dew point near the air     40 %   nothing at a gap of 12 C or more, all of it when they meet
+//   falling pressure               20 %   nothing at 1025 hPa or more, all of it at 995 hPa or less
+// and shows, from clear to overcast:
+//   0 a sun (score under 0.30)   1 the sun behind a cloud (to 0.51)   2 a cloud, 9/16 solid (to 0.71)
+//   3 a cloud, 12/16 solid (to 0.88)   4 a solid cloud
+float atmoCloudScore(float humidity, float tempC, float dewC, bool dewOk, float hPa) {
+  float h = (humidity - 30.0) / 70.0;
+  if (h < 0.0) h = 0.0;
+  if (h > 1.0) h = 1.0;
+  float d = 0.0;                                   // no usable dew point counts as nothing
+  if (dewOk && atmoFinite(tempC)) {
+    d = 1.0 - (tempC - dewC) / 12.0;
+    if (d < 0.0) d = 0.0;
+    if (d > 1.0) d = 1.0;
+  }
+  float p = 0.0;                                   // no usable pressure counts as nothing
+  if (atmoFinite(hPa) && hPa > 0.0) {
+    p = (1025.0 - hPa) / 30.0;
+    if (p < 0.0) p = 0.0;
+    if (p > 1.0) p = 1.0;
+  }
+  return 0.4 * h + 0.4 * d + 0.2 * p;
+}
+
+int atmoCloudStage(float score) {
+  if (score < 0.30) return 0;
+  if (score < 0.51) return 1;
+  if (score < 0.71) return 2;
+  if (score < 0.88) return 3;
+  return 4;
+}
+
+// The shapes, in a slot of 62 x 32 pixels: a cloud made of three circles on a base, and a smaller one in front of the sun
+bool atmoInCircle(int x, int y, int cx, int cy, int r) {
+  return (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r;
+}
+
+bool atmoBigCloud(int x, int y) {
+  return atmoInCircle(x, y, 13, 19, 9) || atmoInCircle(x, y, 31, 12, 12) || atmoInCircle(x, y, 49, 17, 10) ||
+         (x >= 13 && x <= 49 && y >= 19 && y <= 28);
+}
+
+bool atmoSmallCloud(int x, int y) {
+  x -= 18;
+  y -= 9;
+  return atmoInCircle(x, y, 10, 15, 6) || atmoInCircle(x, y, 22, 10, 9) || atmoInCircle(x, y, 33, 14, 7) ||
+         (x >= 10 && x <= 33 && y >= 15 && y <= 21);
+}
+
+// A cloud: its outline, and the inside filled with a dot pattern that gets denser with 'level' (0 empty to 16 solid)
+void atmoDrawCloud(int x0, int y0, int level) {
+  static const uint8_t bayer[4][4] = {{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}};
+  for (int y = 0; y < 32; y++) {
+    for (int x = 0; x < 62; x++) {
+      if (!atmoBigCloud(x, y)) continue;
+      bool edge = !atmoBigCloud(x - 1, y) || !atmoBigCloud(x + 1, y) || !atmoBigCloud(x, y - 1) || !atmoBigCloud(x, y + 1);
+      if (edge || bayer[y & 3][x & 3] < level) display.drawPixel(x0 + x, y0 + y, SSD1306_WHITE);
+    }
+  }
+}
+
+// A sun: a disc with eight rays from 'rayFrom' to 'rayTo' pixels out from the centre (the four straight ones are 2 pixels thick)
+void atmoDrawSun(int cx, int cy, int r, int rayFrom, int rayTo) {
+  static const float dirX[8] = {1.0, 0.7071, 0.0, -0.7071, -1.0, -0.7071, 0.0, 0.7071};
+  static const float dirY[8] = {0.0, 0.7071, 1.0, 0.7071, 0.0, -0.7071, -1.0, -0.7071};
+  display.fillCircle(cx, cy, r, SSD1306_WHITE);
+  for (int k = 0; k < 8; k++) {
+    for (int t = rayFrom; t <= rayTo; t++) {
+      int px = cx + (int)round(t * dirX[k]);
+      int py = cy + (int)round(t * dirY[k]);
+      display.drawPixel(px, py, SSD1306_WHITE);
+      if (k == 0 || k == 4) display.drawPixel(px, py + 1, SSD1306_WHITE);
+      else if (k == 2 || k == 6) display.drawPixel(px + 1, py, SSD1306_WHITE);
+    }
+  }
+}
+
+// The sun with a small cloud in front of it: the cloud is an outline with nothing of the sun showing through
+void atmoDrawSunBehindCloud(int x0, int y0) {
+  atmoDrawSun(x0 + 16, y0 + 14, 6, 9, 12);
+  for (int y = 0; y < 32; y++) {
+    for (int x = 0; x < 62; x++) {
+      if (!atmoSmallCloud(x, y)) continue;
+      bool edge = !atmoSmallCloud(x - 1, y) || !atmoSmallCloud(x + 1, y) || !atmoSmallCloud(x, y - 1) || !atmoSmallCloud(x, y + 1);
+      display.drawPixel(x0 + x, y0 + y, edge ? SSD1306_WHITE : SSD1306_BLACK);
+    }
+  }
+}
+
+// The icon for a stage (0 to 4), centred under the humidity bar
+void atmoDrawIcon(int stage) {
+  int x0 = 36;
+  int y0 = 31;
+  if (stage == 0)      atmoDrawSun(x0 + 27, y0 + 15, 8, 11, 15);
+  else if (stage == 1) atmoDrawSunBehindCloud(x0, y0);
+  else                 atmoDrawCloud(x0, y0, stage == 2 ? 9 : (stage == 3 ? 12 : 16));
+}
+
+// The whole OLED screen: the HUM block with its 14-segment bar and the reading, and the icon. Without a humidity reading there
+// is no bar and no icon (the reading shows --).
+void atmoDrawOled(float humidity, float tempC, float dewC, bool dewOk, float hPa) {
+  char buf[8];
   display.clearDisplay();
   lcoFrame("ATMOSPHERIC", NULL);
   display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
 
-  lcoPill(9, 18, 30, 8, "TEMP");
-  if (atmoFinite(temp)) snprintf(buf, sizeof(buf), "%.1f %s", temp, tempUnit); else snprintf(buf, sizeof(buf), "--");
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(127 - 6 * (int)strlen(buf), 18);
-  display.print(buf);
-
-  lcoPill(9, 27, 24, 8, "DEW");
-  if (dewOk) snprintf(buf, sizeof(buf), "%.1f %s", dew, tempUnit); else snprintf(buf, sizeof(buf), "--");
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(127 - 6 * (int)strlen(buf), 27);
-  display.print(buf);
-
-  lcoPill(9, 36, 24, 8, "HUM");                                  // the humidity bar: 14 segments of 7 %
+  lcoPill(9, 18, 24, 8, "HUM");
   bool humOk = atmoFinite(humidity);
   int lit = humOk ? (int)(humidity * 14.0 / 100.0 + 0.5) : 0;
   if (lit < 0) lit = 0;
   if (lit > 14) lit = 14;
-  lcoBar(40, 37, 14, lit, 3, 6, 4);
+  lcoBar(40, 19, 14, lit, 3, 6, 4);
   if (humOk) snprintf(buf, sizeof(buf), "%.0f%%", humidity); else snprintf(buf, sizeof(buf), "--");
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(127 - 6 * (int)strlen(buf), 36);
+  display.setCursor(127 - 6 * (int)strlen(buf), 18);
   display.print(buf);
 
-  lcoPill(9, 45, 36, 8, "PRESS");
-  if (atmoFinite(pressure) && pressure > 0.0) snprintf(buf, sizeof(buf), "%.2f %s", pressure, presUnit); else snprintf(buf, sizeof(buf), "--");
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(127 - 6 * (int)strlen(buf), 45);
-  display.print(buf);
-
-  display.setCursor(9, 55);                                      // which buttons change the units
-  display.print("HOLD RT=C/F DN=kPa");
+  if (humOk) atmoDrawIcon(atmoCloudStage(atmoCloudScore(humidity, tempC, dewC, dewOk, hPa)));
   display.display();
 }
 
@@ -212,8 +294,7 @@ void Atmospheric(int pressType) {
     }
 
     // 4. Draw to OLED
-    atmoDrawOled(displayTemp, tempUnitStr.c_str(), displayDewPt, humidity > 0.0 && atmoFinite((float)dewPointC), humidity,
-                 displayPressure, presUnitStr.c_str());
+    atmoDrawOled(humidity, temperatureC, (float)dewPointC, humidity > 0.0 && atmoFinite((float)dewPointC), pressurehPa);
 
     // 5. Draw to the colour screen: the scale ends once, then only the numbers and the bars (temperature, dew point, pressure)
     if (!atmoTftReady) {

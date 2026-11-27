@@ -19,16 +19,9 @@ void applyMagCal(float &x, float &y, float &z) {
 }
 
 void calibrateMagnetometer() {
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 9);
-  display.println(F("Calibrating..."));
-  display.println(F("Slowly rotate the"));
-  display.println(F("device in ALL"));
-  display.println(F("directions (tumble"));
-  display.println(F("it, figure-8)"));
-  display.display();
+  char left[20];                                             // the OLED in the LCARS look (see LcarsOled.ino)
+  snprintf(left, sizeof(left), "TIME LEFT: %lus", (unsigned long)(MAG_CAL_MS / 1000UL));
+  lcoCalibrating("MAG", "TUMBLE IT SLOWLY IN", "ALL DIRECTIONS", "(FIGURE-8)", 0, left);
 
   float minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9, minZ = 1e9, maxZ = -1e9;
   unsigned long startTime = millis();
@@ -47,13 +40,9 @@ void calibrateMagnetometer() {
     // Countdown, once a second
     if (millis() - lastCountdown >= 1000) {
       lastCountdown = millis();
-      display.fillRect(0, 50, 128, 14, SSD1306_BLACK);
-      display.setCursor(0, 52);
-      display.print(F("Time left: "));
       unsigned long elapsed = millis() - startTime;
-      display.print(elapsed < MAG_CAL_MS ? (MAG_CAL_MS - elapsed) / 1000 + 1 : 0);
-      display.print(F("s"));
-      display.display();
+      snprintf(left, sizeof(left), "TIME LEFT: %lus", elapsed < MAG_CAL_MS ? (unsigned long)((MAG_CAL_MS - elapsed) / 1000 + 1) : 0UL);
+      lcoCalibrating("MAG", "TUMBLE IT SLOWLY IN", "ALL DIRECTIONS", "(FIGURE-8)", (int)(elapsed * 100UL / MAG_CAL_MS), left);
     }
     delay(5);
   }
@@ -63,15 +52,9 @@ void calibrateMagnetometer() {
   float rY = (maxY - minY) / 2.0;
   float rZ = (maxZ - minZ) / 2.0;
 
-  display.clearDisplay();
-  display.setCursor(0, 15);
-
   // If any axis barely moved, the device wasn't rotated through enough orientations: keep the old values
   if (rX < 10.0 || rY < 10.0 || rZ < 10.0) {
-    display.println(F("Cal FAILED"));
-    display.println(F("Rotate through ALL"));
-    display.println(F("orientations & retry"));
-    display.display();
+    lcoMessage("CAL FAILED", "MAG", "ROTATE THROUGH ALL", "ORIENTATIONS AND", "RETRY", NULL, NULL);
     Serial.println(F("Mag cal failed - not enough rotation, previous values kept"));
     delay(2500);
     return;
@@ -94,11 +77,9 @@ void calibrateMagnetometer() {
   Serial.print(F(", magScaleZ = "));     Serial.print(magScaleZ, 3); Serial.println(F(";"));
   Serial.print(F("Field strength ~ ")); Serial.print(avgR, 1); Serial.println(F(" uT"));
 
-  display.println(F("Calibration Done"));
-  display.print(F("Field: "));
-  display.print(avgR, 1);
-  display.println(F(" uT"));
-  display.display();
+  char field[24];
+  snprintf(field, sizeof(field), "FIELD: %.1f uT", avgR);
+  lcoMessage("CALIBRATED", "MAG", "CALIBRATION DONE", field, NULL, NULL, NULL);
   delay(2000);
 }
 
@@ -106,10 +87,7 @@ void calibrateMetalDetector() {
   float sum = 0.0;
   int count = 0;
   Serial.println("Calibrating baseline... Keep away from metal.");
-  display.clearDisplay();
-  display.setCursor(0, 16);
-  display.println(F("Calibrating..."));
-  display.display();
+  lcoCalibrating("METAL", "KEEP AWAY FROM", "METAL", NULL, 0, "SETTING BASELINE...");   // the OLED in the LCARS look (see LcarsOled.ino)
 
   while (count < CALIBRATION_SAMPLES) {
     if (IMU.magneticFieldAvailable()) {
@@ -118,6 +96,7 @@ void calibrateMetalDetector() {
       float magnitude = sqrt(x * x + y * y + z * z);
       sum += magnitude;
       count++;
+      if (count % 10 == 0) lcoCalibrating("METAL", "KEEP AWAY FROM", "METAL", NULL, count * 100 / CALIBRATION_SAMPLES, "SETTING BASELINE...");
       delay(100);
     }
   }
@@ -134,5 +113,6 @@ void onPDMdata() {
   samplesRead = bytesAvailable / 2;
   audioRingPush(sampleBuffer, bytesAvailable / 2);   // NEW: queue audio for the dB meter
   shotRingPush(sampleBuffer, bytesAvailable / 2);
+  micStreamPush(sampleBuffer, bytesAvailable / 2);   // live audio to the phone (only queues while streaming)
 
 }

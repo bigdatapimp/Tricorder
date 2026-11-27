@@ -22,12 +22,7 @@ void rebootDrawBanner() {
 }
 
 void rebootNow(bool fromPhone) {
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 9);
-  display.println(F("REBOOTING..."));
-  display.display();
+  lcoBlockScreen("REBOOT", NULL, "REBOOTING...", true);
   rebootDrawBanner();
   Serial.println(fromPhone ? F("Rebooting by request from the phone") : F("Rebooting by request"));
   Serial.flush();
@@ -54,17 +49,11 @@ void RebootDevice(int pressType) {
   if (!drawn) {
     drawn = true;
     rebootDrawConfirm();
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 9);
-    display.println(F("REBOOT"));
-    display.setCursor(0, 24);
-    display.println(F("Restart the device?"));
-    display.setCursor(0, 38);
-    display.println(F("ENTER = Yes"));
-    display.setCursor(0, 48);
-    display.println(F("LEFT  = Cancel"));
+    display.clearDisplay();                         // (LCARS look, see LcarsOled.ino)
+    lcoFrame("REBOOT", NULL);
+    lcoText(0, "RESTART THE DEVICE?");
+    lcoBlock(32, 10, "ENTER = YES", true);
+    lcoBlock(46, 10, "LEFT = CANCEL", false);
     display.display();
   }
 }

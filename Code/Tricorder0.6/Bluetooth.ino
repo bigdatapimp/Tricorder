@@ -32,7 +32,7 @@
 
 #include <ArduinoBLE.h>
 
-#define BLE_PROTOCOL_VERSION 8
+#define BLE_PROTOCOL_VERSION 10
 #define BLE_DEVICE_NAME      "Tricorder"
 #define BLE_NOTIFY_PERIOD_MS 1000
 
@@ -50,6 +50,7 @@
 #define BLE_CDT_UUID      "3f5a000b-7c2b-4e6d-a1b3-5d8e9c0f1a20"
 #define BLE_CMD_UUID      "3f5a000c-7c2b-4e6d-a1b3-5d8e9c0f1a20"
 #define BLE_IRR_UUID      "3f5a000d-7c2b-4e6d-a1b3-5d8e9c0f1a20"
+#define BLE_AUD_UUID      "3f5a000e-7c2b-4e6d-a1b3-5d8e9c0f1a20"
 
 // Pressure correction. The Atmospheric screen converts to inHg with 0.02994 instead of the true 0.02953: a
 // deliberate correction of the pressure sensor against a reference instrument (about +1.4 %). The same
@@ -60,7 +61,7 @@
 #define BLE_ENV_LEN 12
 #define BLE_POS_LEN 20
 #define BLE_DEV_LEN 20
-#define BLE_MOT_LEN 10
+#define BLE_MOT_LEN 12
 #define BLE_SND_LEN 10
 #define BLE_SPC_LEN 20
 #define BLE_FLD_LEN 12
@@ -69,6 +70,7 @@
 #define BLE_SWT_LEN 8
 #define BLE_CDT_LEN 8
 #define BLE_IRR_LEN 19
+#define BLE_AUD_LEN 20       // one live-microphone packet (MicStream.ino)
 #define BLE_CMD_LEN 4                // a command is 4 bytes
 #define BLE_STREAMS 12               // number of characteristics that are sent
 #define BLE_LIVE_PERIOD_MS   200      // Motion / Sound / Spectrum while their screen is open
@@ -258,16 +260,18 @@ void blePackDevice(uint8_t* out, int batteryMv, int batteryPct, uint8_t screenId
   out[19] = timeZone;
 }
 
-// Motion (10 bytes)
+// Motion (12 bytes)
 //   0  uint16  compass heading, 0.1 degrees 0-3599     (0xFFFF = no reading)
 //   2  int16   pitch, 0.1 degrees                      (0x8000 = no reading)
 //   4  int16   roll, 0.1 degrees                       (0x8000 = no reading)
 //   6  uint16  magnetic field strength, 0.1 uT         (0xFFFF = no reading)
 //   8  uint8   flags: bit0 held level, bit1 values valid, bit2 magnetometer calibrated,
 //                     bit3 live (the Navigation screen is open and updating)
-//   9  uint8   reserved (0)
+//   9  uint8   flags 2: bit0 the declination is saved in flash (otherwise it is lost at power-off)     (protocol v9)
+//  10  int16   compass declination in use, 0.01 degrees, east positive (0x8000 = no value)             (protocol v9)
+//              (a v8 or older Motion packet is 10 bytes long and has neither)
 void blePackMotion(uint8_t* out, bool valid, float heading, float pitch, float roll, float field,
-                   bool level, bool calibrated, bool live) {
+                   bool level, bool calibrated, bool live, int declX100, bool declSaved) {
   uint16_t h = 0xFFFF;
   int16_t p = (int16_t)0x8000;
   int16_t r = (int16_t)0x8000;
@@ -290,7 +294,8 @@ void blePackMotion(uint8_t* out, bool valid, float heading, float pitch, float r
   blePut16(out + 4, (uint16_t)r);
   blePut16(out + 6, f);
   out[8] = flags;
-  out[9] = 0;
+  out[9] = declSaved ? 0x01 : 0x00;
+  blePut16(out + 10, (uint16_t)(int16_t)bleRoundClamp((double)declX100, -32767, 32767));
 }
 
 uint16_t bleDbTenths(float db) {
@@ -504,6 +509,7 @@ BLECharacteristic bleLstChar(BLE_LST_UUID, BLERead | BLENotify, BLE_LST_LEN, tru
 BLECharacteristic bleSwtChar(BLE_SWT_UUID, BLERead | BLENotify, BLE_SWT_LEN, true);
 BLECharacteristic bleCdtChar(BLE_CDT_UUID, BLERead | BLENotify, BLE_CDT_LEN, true);
 BLECharacteristic bleIrrChar(BLE_IRR_UUID, BLERead | BLENotify, BLE_IRR_LEN, true);
+BLECharacteristic bleAudChar(BLE_AUD_UUID, BLENotify, BLE_AUD_LEN, true);    // live microphone (MicStream.ino): notify only
 BLECharacteristic bleCmdChar(BLE_CMD_UUID, BLEWrite, BLE_CMD_LEN);     // the phone writes commands here (Remote.ino)
 
 bool bleStarted = false;               // BLE.begin() succeeded (done once, the first time Bluetooth is turned on)
@@ -533,6 +539,8 @@ uint8_t bleScreenId() {
     case BATTERY:        return 7;
     case SYSINFO:        return 8;
     case TIMEZONE:       return 9;
+    case DECLINATION_SETUP: return 17;
+    case AUDIO_STREAM:   return 18;
     case REBOOT:         return 10;
     case IRSEND:         return 11;
     case IRRECEIVER:     return 12;
@@ -574,6 +582,7 @@ bool bleBegin() {
   bleService.addCharacteristic(bleSwtChar);
   bleService.addCharacteristic(bleCdtChar);
   bleService.addCharacteristic(bleIrrChar);
+  bleService.addCharacteristic(bleAudChar);
   bleService.addCharacteristic(bleCmdChar);
   BLE.addService(bleService);
 
@@ -661,7 +670,8 @@ void bleSendMotion() {
   bool live = have && currentState == NAVIGATION && (now - telMotionMs) < 1500;
   bool calibrated = (magOffX != 0.0 || magOffY != 0.0 || magOffZ != 0.0 ||
                      magScaleX != 1.0 || magScaleY != 1.0 || magScaleZ != 1.0);
-  blePackMotion(pkt, have, telHeading, telPitch, telRoll, telField, telLevel, calibrated, live);
+  blePackMotion(pkt, have, telHeading, telPitch, telRoll, telField, telLevel, calibrated, live,
+                declinationX100ForPhone(), declinationSavedForPhone());
   bleMotChar.writeValue(pkt, BLE_MOT_LEN);
   bleSentCount++;
 }
@@ -794,6 +804,14 @@ void bleSendIrRx() {
   bleSentCount++;
 }
 
+// One packet of the live microphone stream (MicStream.ino). False if it could not be sent (Bluetooth off or no phone connected).
+bool bleSendAudioPacket(const uint8_t* pkt) {
+  if (!bleEnabled || !bleConnected) return false;
+  bleAudChar.writeValue(pkt, BLE_AUD_LEN);
+  bleSentCount++;
+  return true;
+}
+
 // ---- scheduler: the streams are numbered 0-11 ----
 //   0 Environment  1 Position  2 Device  3 Motion  4 Sound  5 Spectrum  6 Fields  7 Shot  8 List  9 Stopwatch  10 Countdown
 //   11 IR Receive
@@ -893,23 +911,20 @@ const char* bleStatusText() {
 }
 
 void bleDrawOled() {
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 9);
-  display.print(F("BLUETOOTH"));
-  display.setCursor(0, 20);
-  display.print(F("Status: "));
-  display.print(bleStatusText());
-  display.setCursor(0, 30);
-  display.print(F("Remote: "));
-  display.print(remoteEnabled ? "ON" : "off");
+  display.clearDisplay();                                      // (LCARS look, see LcarsOled.ino)
+  lcoFrame("BLUETOOTH", bleEnabled ? "ON" : "OFF");
+  lcoRow(0, "STATUS", bleStatusText());
+  lcoRow(1, "REMOTE", remoteEnabled ? "ON" : "OFF");
   if (bleStarted) {
-    display.setCursor(0, 40);
-    display.print(BLE.address());
+    String address = BLE.address();
+    lcoText(2, address.c_str());
   }
-  display.setCursor(0, 52);
-  display.print(bleEnabled ? "ENT=Off  RIGHT=Remote" : "ENTER = Turn on");
+  if (bleEnabled) {
+    lcoText(3, "ENTER = TURN OFF");
+    lcoText(4, "RIGHT = REMOTE");
+  } else {
+    lcoText(3, "ENTER = TURN ON");
+  }
   display.display();
 }
 
@@ -970,12 +985,7 @@ void BluetoothScreen(int pressType) {
   // --- Enter: turn Bluetooth on / off ---
   if (pressType == SHORT_PRESS && lastButton == 1) {
     if (!bleEnabled) {
-      display.clearDisplay();                       // BLE.begin() takes a moment the first time
-      display.setTextSize(1);
-      display.setTextColor(SSD1306_WHITE);
-      display.setCursor(0, 20);
-      display.print(F("Starting Bluetooth..."));
-      display.display();
+      lcoBlockScreen("BLUETOOTH", NULL, "STARTING...", true);       // BLE.begin() takes a moment the first time
     }
     bleSetEnabled(!bleEnabled);
   }

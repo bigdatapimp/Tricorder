@@ -256,34 +256,20 @@ void SpectrumAnalyzer(int pressType) {
   // --- OLED text, 4 times a second ---
   if (millis() - lastOledMs >= 250) {
     lastOledMs = millis();
+    // the OLED in the LCARS look (see LcarsOled.ino): peak frequency, level and gain
     display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 9);
-    display.println(F("Spectrum"));
-
-    display.setCursor(0, 20);
-    display.print(F("Peak: "));
-    if (peakDb > 10.0) {                    // don't report a "peak" that is just noise floor
-      display.print((int)(peakFreq + 0.5));
-      display.println(F(" Hz"));
-    } else {
-      display.println(F("---"));
-    }
-
-    display.setCursor(0, 30);
-    display.print(F("Level: "));
-    display.print(peakDb, 1);
-    display.println(F(" dB"));
-
-    display.setCursor(0, 40);
-    display.print(F("Gain: "));
-    if (specGainDb > 0) display.print(F("+"));
-    display.print(specGainDb);
-    display.println(F(" dB  (U/D)"));
-
-    display.setCursor(0, 55);
-    display.print(F("Hold L to Exit"));
+    lcoFrame("SPECTRUM", NULL);
+    char v[16];
+    if (peakDb > 10.0) snprintf(v, sizeof(v), "%d Hz", (int)(peakFreq + 0.5));       // not a "peak" that is just noise floor
+    else               snprintf(v, sizeof(v), "---");
+    lcoRow(0, "PEAK", v);
+    snprintf(v, sizeof(v), "%.1f dB", peakDb);
+    lcoRow(1, "LEVEL", v);
+    if (specGainDb > 0) snprintf(v, sizeof(v), "+%d dB", specGainDb);
+    else                snprintf(v, sizeof(v), "%d dB", specGainDb);
+    lcoRow(2, "GAIN", v);
+    lcoText(3, "UP/DN = GAIN");
+    lcoText(4, "HOLD LT = EXIT");
     display.display();
   }
 }

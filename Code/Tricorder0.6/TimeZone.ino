@@ -129,6 +129,34 @@ const char* tzPanelName(int i) {
 }
 bool tzInUseForPanel(int i) { return i == tzIndex; }
 
+// The OLED (LCARS look, see LcarsOled.ino): the zone list with the cursor as a solid block and * on the zone in use; the tag says
+// whether the last save worked
+void tzDrawOled(int cursor, int inUse, bool hasMessage, bool savedFlag) {
+  display.clearDisplay();                                  // (LCARS look, see LcarsOled.ino)
+  lcoFrame("TIME ZONE", hasMessage ? (savedFlag ? "SAVED" : "UNSAVED") : NULL);
+
+  // Scrolling window of TZ_LIST_ROWS rows that always contains the cursor
+  int first = cursor - (TZ_LIST_ROWS - 1) / 2;
+  if (first < 0) first = 0;
+  if (first > TZ_COUNT - TZ_LIST_ROWS) first = TZ_COUNT - TZ_LIST_ROWS;
+
+  display.setTextSize(1);
+  for (int r = 0; r < TZ_LIST_ROWS; r++) {
+    int i = first + r;
+    int y = lcoRowY(r);
+    if (i == cursor) display.fillRoundRect(9, y, 118, 8, 3, SSD1306_WHITE);   // the cursor: a solid block
+    else             display.drawRoundRect(9, y, 118, 8, 3, SSD1306_WHITE);
+    display.setTextColor(i == cursor ? SSD1306_BLACK : SSD1306_WHITE);
+    display.setCursor(9 + 6, y);
+    display.print(tzNames[i]);
+    if (i == inUse) {                                    // * marks the zone currently in use
+      display.setCursor(9 + 108, y);
+      display.print("*");
+    }
+  }
+  display.display();
+}
+
 void TimeZoneSetup(int pressType) {
   static bool initialized = false;
   static bool dirty = true;
@@ -182,32 +210,7 @@ void TimeZoneSetup(int pressType) {
   // --- OLED: only when something changed ---
   if (dirty) {
     dirty = false;
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 9);
-    display.print(F("TIME ZONE"));
-    if (messageUntil != 0) {
-      display.setCursor(72, 9);
-      display.print(messageSaved ? "Saved" : "Not saved");
-    }
-
-    // Scrolling window of TZ_LIST_ROWS rows that always contains the cursor
-    int first = cursor - (TZ_LIST_ROWS - 1) / 2;
-    if (first < 0) first = 0;
-    if (first > TZ_COUNT - TZ_LIST_ROWS) first = TZ_COUNT - TZ_LIST_ROWS;
-
-    for (int r = 0; r < TZ_LIST_ROWS; r++) {
-      int i = first + r;
-      int y = 20 + r * 8;
-      display.setCursor(0, y);
-      display.print(i == cursor ? ">" : " ");
-      display.setCursor(8, y);
-      display.print(i == tzIndex ? "*" : " ");        // * marks the zone currently in use
-      display.setCursor(18, y);
-      display.print(tzNames[i]);
-    }
-    display.display();
+    tzDrawOled(cursor, tzIndex, messageUntil != 0, messageSaved);
   }
 
   tzPanelCursor = cursor;

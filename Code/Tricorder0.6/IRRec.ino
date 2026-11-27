@@ -713,18 +713,11 @@ void irRxTftKeys() {
 }
 
 void irRxDrawMenu() {
-  irRxOledStart();
-  display.setCursor(0, 0);
-  display.println(F("IR RECEIVE"));
-  display.setCursor(0, 16);
-  display.print(irRxMenuCursor == 0 ? "> " : "  ");
-  display.println(F("1. Clone remote"));
-  display.setCursor(0, 28);
-  display.print(irRxMenuCursor == 1 ? "> " : "  ");
-  display.println(F("2. Receive IR data"));
-  display.setCursor(0, 52);
-  display.print(F("Codes in use: "));
-  display.println(irCodeSetName());
+  display.clearDisplay();                                      // (LCARS look, see LcarsOled.ino)
+  lcoFrame("IR RECEIVE", NULL);
+  lcoBlock(19, 11, "1. CLONE REMOTE", irRxMenuCursor == 0);
+  lcoBlock(32, 11, "2. RECEIVE IR DATA", irRxMenuCursor == 1);
+  lcoRow(4, "CODES", irCodeSetName());
   display.display();
   irRxTftTitle("CHOOSE", CYAN);
   irRxTftItem(21, "CLONE REMOTE", irRxMenuCursor == 0);
@@ -735,23 +728,21 @@ void irRxDrawMenu() {
 }
 
 void irRxDrawData(bool got) {
-  irRxOledStart();
-  display.setCursor(0, 0);
-  display.println(F("IR DATA   (LT = back)"));
+  display.clearDisplay();                                      // (LCARS look, see LcarsOled.ino)
+  lcoFrame("IR DATA", got ? "FOUND" : "WAIT");
   if (!got) {
-    display.setCursor(0, 20);
-    display.println(F("Point a remote at"));
-    display.println(F("the receiver and"));
-    display.println(F("press a button..."));
+    lcoText(0, "POINT A REMOTE AT");
+    lcoText(1, "THE RECEIVER AND");
+    lcoText(2, "PRESS A BUTTON...");
   } else {
-    display.setCursor(0, 14);
-    display.println(irRxLine1);
-    display.println(irRxLine2);
-    display.println(irRxLine3);
+    lcoTextAt(9, lcoRowY(0), irRxLine1, 19);
+    lcoTextAt(9, lcoRowY(1), irRxLine2, 19);
+    lcoTextAt(9, lcoRowY(2), irRxLine3, 19);
     char buf[24];
     snprintf(buf, sizeof(buf), "%d pulses", irRxLen);
-    display.println(buf);
+    lcoText(3, buf);
   }
+  lcoText(4, "LT = BACK");
   display.display();
   irRxTftTitle(got ? "SIGNAL FOUND" : "IR DATA", got ? GREEN : CYAN);
   if (!got) {
@@ -773,21 +764,17 @@ void irRxDrawData(bool got) {
 
 void irRxDrawClone() {
   int slot = irCloneOrder[irCloneIndex];
-  irRxOledStart();
-  char head[24];
-  snprintf(head, sizeof(head), "CLONE REMOTE  %d/%d", irCloneIndex + 1, IR_SLOTS);
-  display.setCursor(0, 0);
-  display.println(head);
-  display.setCursor(0, 11);
-  display.println(F("Press on the remote:"));
-  display.setTextSize(2);
-  display.setCursor(0, 22);
-  display.println(irSlotNames[slot]);
-  display.setTextSize(1);
-  display.setCursor(0, 42);
-  display.println(irRxNote[0] ? irRxNote : "Waiting for IR...");
-  display.setCursor(0, 55);
-  display.println(F("R:skip U:back L:quit"));
+  char head[16];
+  snprintf(head, sizeof(head), "%d/%d", irCloneIndex + 1, IR_SLOTS);
+  display.clearDisplay();                                      // (LCARS look, see LcarsOled.ino)
+  lcoFrame("CLONE REMOTE", head);
+  lcoText(0, "PRESS ON REMOTE:");
+  display.setTextSize(strlen(irSlotNames[slot]) <= 9 ? 2 : 1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(9, 27);
+  display.print(irSlotNames[slot]);
+  lcoTextAt(9, 45, irRxNote[0] ? irRxNote : "WAITING FOR IR...", 19);
+  lcoTextAt(8, 55, "R:SKIP U:BACK L:QUIT", 20);
   display.display();
   char title[16];
   snprintf(title, sizeof(title), "CLONE %d/%d", irCloneIndex + 1, IR_SLOTS);
@@ -814,13 +801,11 @@ void irRxDrawClone() {
 }
 
 void irRxDrawConfirm(bool restore) {
-  irRxOledStart();
-  display.setCursor(0, 8);
-  display.println(restore ? F("Go back to the default") : F("Discard the new codes?"));
-  if (restore) display.println(F("codes?"));
-  display.setCursor(0, 36);
-  display.println(F("ENTER = yes"));
-  display.println(F("LEFT  = no"));
+  display.clearDisplay();                                      // (LCARS look, see LcarsOled.ino)
+  lcoFrame(restore ? "DEFAULT CODES" : "CANCEL CLONE", NULL);
+  lcoWrap(9, lcoRowY(0), 19, 2, restore ? "GO BACK TO THE DEFAULT CODES?" : "DISCARD THE NEW CODES?");
+  lcoBlock(38, 10, "ENTER = YES", true);
+  lcoBlock(51, 10, "LEFT = NO", false);
   display.display();
   irRxTftTitle(restore ? "DEFAULT CODES" : "CANCEL CLONE", YELLOW);
   lcWrap(8, 22, IRRX_TFT_CHARS, 3, restore ? "USE THE BUILT-IN CODES AGAIN?" : "THROW AWAY THE CODES JUST RECORDED?", lcPeach());
@@ -828,38 +813,26 @@ void irRxDrawConfirm(bool restore) {
 }
 
 void irRxDrawDone() {
-  irRxOledStart();
-  display.setCursor(0, 0);
   char buf[24];
+  display.clearDisplay();                                      // (LCARS look, see LcarsOled.ino)
+  lcoFrame(irRxDoneKind == 1 ? "CLONE COMPLETE" : (irRxDoneKind == 2 ? "NOTHING RECORDED" : (irRxDoneKind == 3 ? "CLONE CANCELLED" : "DEFAULT CODES")), NULL);
   if (irRxDoneKind == 1) {
-    display.println(F("CLONE COMPLETE"));
-    snprintf(buf, sizeof(buf), "%d set, %d skipped", irRxCaptured, IR_SLOTS - irRxCaptured);
-    display.setCursor(0, 14);
-    display.println(buf);
-    display.setCursor(0, 28);
-    display.println(irRxSaved ? F("Saved to flash") : F("NOT saved: lost at"));
-    if (!irRxSaved) display.println(F("power-off"));
+    snprintf(buf, sizeof(buf), "%d SET, %d SKIPPED", irRxCaptured, IR_SLOTS - irRxCaptured);
+    lcoText(0, buf);
+    if (irRxSaved) {
+      lcoText(1, "SAVED TO FLASH");
+    } else {
+      lcoText(1, "NOT SAVED: LOST AT");
+      lcoText(2, "POWER-OFF");
+    }
   } else if (irRxDoneKind == 2) {
-    display.println(F("NOTHING RECORDED"));
-    display.setCursor(0, 14);
-    display.println(F("Every button was"));
-    display.println(F("skipped. The codes"));
-    display.println(F("are unchanged."));
+    lcoWrap(9, lcoRowY(0), 19, 4, "EVERY BUTTON WAS SKIPPED. THE CODES ARE UNCHANGED.");
   } else if (irRxDoneKind == 3) {
-    display.println(F("CLONE CANCELLED"));
-    display.setCursor(0, 14);
-    display.println(F("The new codes were"));
-    display.println(F("discarded. The codes"));
-    display.println(F("in use are unchanged."));
+    lcoWrap(9, lcoRowY(0), 19, 4, "THE NEW CODES WERE DISCARDED. THE CODES IN USE ARE UNCHANGED.");
   } else {
-    display.println(F("DEFAULT CODES"));
-    display.setCursor(0, 14);
-    display.println(F("The built-in codes"));
-    display.println(F("are in use again."));
-    if (!irRxSaved) display.println(F("(the saved set is still in flash)"));
+    lcoWrap(9, lcoRowY(0), 19, 4, irRxSaved ? "THE BUILT-IN CODES ARE IN USE AGAIN." : "THE BUILT-IN CODES ARE IN USE AGAIN. (THE SAVED SET IS STILL IN FLASH)");
   }
-  display.setCursor(0, 56);
-  display.println(F("Press any button"));
+  lcoText(4, "PRESS ANY BUTTON");
   display.display();
   irRxTftTitle(irRxDoneKind == 1 ? "CLONE COMPLETE" : (irRxDoneKind == 3 ? "CANCELLED" : (irRxDoneKind == 4 ? "DEFAULTS" : "NO CODES")), irRxDoneKind == 1 ? GREEN : YELLOW);
   if (irRxDoneKind == 1) {

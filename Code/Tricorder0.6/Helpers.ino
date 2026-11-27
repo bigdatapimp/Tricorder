@@ -23,7 +23,7 @@ const char* const lcGeoNames[3]   = {"METAL DETECTOR", "EMF METER", "NAVIGATION"
 const char* const lcEnvNames[3]   = {"ATMOSPHERIC", "dB METER", "SPECTRUM"};
 const char* const lcCommsNames[3] = {"BLUETOOTH", "IR SEND", "IR RECEIVE"};
 const char* const lcUtilNames[3]  = {"SHOT TIMER", "STOPWATCH", "COUNTDOWN"};
-const char* const lcSysNames[4]   = {"BATTERY", "SYSTEM INFO", "TIME ZONE", "REBOOT"};
+const char* const lcSysNames[5]   = {"BATTERY", "SYSTEM INFO", "TIME ZONE", "DECLINATION", "REBOOT"};
 
 // Which menu is showing: its header title, the selected item's name, its place in the list, and whether to highlight it
 // (the zone in use, in the Time Zone screen). False if the current screen is not one of the menus.
@@ -35,8 +35,9 @@ bool lcMenuInfo(const char** title, const char** item, int* index, int* count, b
     case ENV_MENU:   *title = "ENV";       *count = 3; *index = subMenuCursor;  break;
     case COMMS_MENU: *title = "COMMS";     *count = 3; *index = subMenuCursor;  break;
     case UTIL_MENU:  *title = "UTIL";      *count = 3; *index = subMenuCursor;  break;
-    case SYS_MENU:   *title = "SYS";       *count = 4; *index = subMenuCursor;  break;
+    case SYS_MENU:   *title = "SYS";       *count = 5; *index = subMenuCursor;  break;
     case TIMEZONE:   *title = "TIME ZONE"; *count = tzCountForPanel(); *index = tzCursorForPanel(); break;
+    case DECLINATION_SETUP: *title = "COMPASS"; *count = 1; *index = 0; break;
     default:         *title = "CLOCK";     *count = 0; *index = 0; *item = ""; return false;
   }
   if (*index < 0) *index = 0;
@@ -48,6 +49,7 @@ bool lcMenuInfo(const char** title, const char** item, int* index, int* count, b
     case COMMS_MENU: *item = lcCommsNames[*index]; break;
     case UTIL_MENU:  *item = lcUtilNames[*index];  break;
     case SYS_MENU:   *item = lcSysNames[*index];   break;
+    case DECLINATION_SETUP: *item = declinationPanelText(); *highlight = declinationPanelInUse(); break;
     default:         *item = tzPanelName(*index); *highlight = tzInUseForPanel(*index); break;
   }
   return true;
@@ -85,6 +87,7 @@ void displayGPSClock() {
   static uint32_t lastDateValue = 0xFFFFFFFF;
   static int shownIndex = -1, shownCount = -1;
   static bool shownHighlight = false;
+  static char shownItem[16];
   static char shownTz[8];
 
   const char* title;
@@ -102,6 +105,7 @@ void displayGPSClock() {
     memset(clockShownDate, 0, sizeof(clockShownDate));
     memset(shownTz, 0, sizeof(shownTz));
     shownIndex = -1;
+    shownItem[0] = '\0';
     lastValid = !valid;                 // so that the clock part below is drawn too
     lastTimeValue = 0xFFFFFFFF;
     lastDateValue = 0xFFFFFFFF;
@@ -109,10 +113,13 @@ void displayGPSClock() {
   }
 
   // The selected item, when the cursor moves
-  if (haveMenu && (index != shownIndex || count != shownCount || highlight != shownHighlight)) {
+  if (haveMenu && (index != shownIndex || count != shownCount || highlight != shownHighlight ||
+                   strncmp(item, shownItem, sizeof(shownItem) - 1) != 0)) {
     shownIndex = index;
     shownCount = count;
     shownHighlight = highlight;
+    strncpy(shownItem, item, sizeof(shownItem) - 1);
+    shownItem[sizeof(shownItem) - 1] = '\0';
     lcDrawMenuItem(item, index, count, highlight);
   }
 

@@ -144,24 +144,18 @@ void MetalDetector(int pressType) {
     snprintf(buf, sizeof(buf), "%5.1f", magShown);
     tftTextDiff(shownMag, 33, 56, 1, buf, lcPeach(), BLACK);
 
-    // --- OLED: the readings and the verdict as text ---
+    // --- OLED (LCARS look, see LcarsOled.ino): field, deviation, baseline and the verdict ---
     display.clearDisplay();
-    display.setCursor(0, 9);
-    display.println(F("Metal Detector"));
-    display.setCursor(0, 20);
-    display.print(F("Mag: "));
-    display.print(currentMagnitude, 1);
-    display.println(F(" uT"));
-    display.setCursor(0, 30);
-    display.print(F("Dev: "));
-    display.print(deviation, 1);
-    display.println(F(" uT"));
-    display.setCursor(0, 55);
-    if (metalDetected) {
-      display.println(F("METAL DETECTED!"));
-    } else {
-      display.println(F("No metal"));
-    }
+    lcoFrame("METAL DET", NULL);
+    char v[16];
+    snprintf(v, sizeof(v), "%.1f uT", currentMagnitude);
+    lcoRow(0, "MAG", v);
+    snprintf(v, sizeof(v), "%.1f uT", deviation);
+    lcoRow(1, "DEV", v);
+    snprintf(v, sizeof(v), "%.1f uT", baselineMagnitude);
+    lcoRow(2, "BASE", v);
+    lcoBlock(45, 10, metalDetected ? "METAL DETECTED!" : "NO METAL", metalDetected);
+    lcoTextAt(9, 56, "HOLD UP: CALIBRATE", 19);
     display.display();
   }
 }

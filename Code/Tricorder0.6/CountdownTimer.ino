@@ -107,26 +107,23 @@ void cdSetMode(int m) {
 }
 
 void cdDrawOled() {
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 9);
-  display.print(F("COUNTDOWN"));
+  display.clearDisplay();                                      // (LCARS look, see LcarsOled.ino)
+  lcoFrame("COUNTDOWN", cdMode == CD_SET ? "SET" : (cdMode == CD_RUN ? "RUN" : (cdMode == CD_PAUSED ? "PAUSED" : "DONE")));
   if (cdMode == CD_SET) {
-    display.setCursor(0, 24); display.print(F("U/D = Change"));
-    display.setCursor(0, 34); display.print(cdField == 0 ? "L/R = [Min]  Sec" : "L/R =  Min  [Sec]");
-    display.setCursor(0, 52); display.print(F("ENTER = Start"));
+    lcoRow(0, "U/D", "CHANGE");
+    lcoRow(1, "L/R", cdField == 0 ? "[MIN] SEC" : "MIN [SEC]");
+    lcoRow(2, "ENTER", "START");
   } else if (cdMode == CD_RUN) {
-    display.setCursor(0, 24); display.print(F("Running..."));
-    display.setCursor(0, 44); display.print(F("ENTER = Pause"));
-    display.setCursor(0, 54); display.print(F("LEFT  = Cancel"));
+    lcoText(0, "RUNNING...");
+    lcoRow(2, "ENTER", "PAUSE");
+    lcoRow(3, "LEFT", "CANCEL");
   } else if (cdMode == CD_PAUSED) {
-    display.setCursor(0, 24); display.print(F("Paused"));
-    display.setCursor(0, 44); display.print(F("ENTER = Resume"));
-    display.setCursor(0, 54); display.print(F("LEFT  = Reset"));
+    lcoText(0, "PAUSED");
+    lcoRow(2, "ENTER", "RESUME");
+    lcoRow(3, "LEFT", "RESET");
   } else {
-    display.setCursor(0, 24); display.print(F("TIME UP!"));
-    display.setCursor(0, 54); display.print(F("Any button = Stop"));
+    lcoBlock(24, 14, "TIME UP!", true);
+    lcoText(4, "ANY BUTTON = STOP");
   }
   display.display();
 }

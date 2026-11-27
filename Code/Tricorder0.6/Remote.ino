@@ -10,6 +10,11 @@
 //                          out to the main menu and walks to the screen with a few presses, like you would.
 //   [5, zone, 0, 0]        set the time zone (0 Eastern, 1 Central, 2 Mountain, 3 Arizona, 4 Pacific, 5 Alaska,
 //                          6 Hawaii), exactly as ENTER does on the Time Zone screen; it is saved if flash allows
+//   [7, lo, hi, 0]         set the compass declination: a signed 16-bit number (little endian) of hundredths of a degree,
+//                          east positive, -4500 to 4500; used and saved exactly as ENTER does on the Declination screen
+//   [8, 1, 0, 0] / [8, 0, 0, 0]   start / stop the live microphone stream: the Tricorder opens its LIVE AUDIO screen and sends the
+//                          microphone on the Audio characteristic (MicStream.ino); it stops when the phone says so, LEFT is
+//                          pressed on the Tricorder, the phone disconnects or remote control is switched off
 //   [6, 0x52, 0x42, 0x54]  reboot the Tricorder. The three extra bytes ("RBT") are a confirmation: a command that
 //                          lacks them is ignored, so a stray write can never restart the unit
 //   [4, action, 0, 0]      IR Receive screen only: action 1 start a clone, 2 open the IR data view, 3 back to the IR
@@ -25,9 +30,9 @@
 // SAFETY
 //   - Remote control is OFF every time the Tricorder starts. You switch it on yourself: COMMS > Bluetooth, then
 //     RIGHT. Commands are ignored while it is off, and it switches off when Bluetooth is turned off.
-//   - The phone can never operate the Reboot, Time Zone and IR Send screens with button presses, and cannot open
-//     Reboot, Time Zone or Bluetooth; on those screens only LEFT (back out) is accepted. Changing the time zone
-//     and rebooting have their own commands (5 and 6 above); the app asks before it sends a reboot. It CAN open and operate IR
+//   - The phone can never operate the Reboot, Time Zone, Declination and IR Send screens with button presses, and cannot open
+//     Reboot, Time Zone, Declination or Bluetooth; on those screens only LEFT (back out) is accepted. Changing the time zone,
+//     the declination and rebooting have their own commands (5, 7 and 6 above); the app asks before it sends a reboot. It CAN open and operate IR
 //     Receive (cloning a remote transmits nothing), but it cannot leave that screen while a clone or a question
 //     ("discard the new codes?") is on it: it has to answer or cancel first.
 //     On the Bluetooth screen it may press UP, DOWN and LEFT but not ENTER or RIGHT. (So the phone cannot restart
@@ -48,16 +53,19 @@
 #define REMOTE_CMD_IRRX     4
 #define REMOTE_CMD_TZ       5
 #define REMOTE_CMD_REBOOT   6
+#define REMOTE_CMD_DECL     7
+#define REMOTE_CMD_AUDIO    8
 #define REMOTE_IR_CODES     17      // number of options on the IR Send screen (see IRRec.ino and IRSend.ino)
 #define REMOTE_MAX_STEPS    8
 #define REMOTE_STEP_MS      150     // pause between the steps of a script, so each screen has time to react
 #define REMOTE_OFF_WHEN_PHONE_DISCONNECTS 0   // set to 1 to switch remote control off whenever the phone disconnects
 
 bool remoteEnabled = false;
+bool remoteIsOn() { return remoteEnabled; }     // for the tabs that sort before this one
 
 // A script is a few steps run one at a time. Step kinds: 0 short press, 1 long press (arg = button 1-5),
 // 2 put the main menu cursor on item 'arg', 3 put the submenu cursor on item 'arg', 4 send IR code 'arg' (select
-// that option on the IR Send screen and press ENTER; only while that screen is open).
+// that option on the IR Send screen and press ENTER; only while that screen is open), 5 open the Live Audio screen.
 uint8_t remoteStepKind[REMOTE_MAX_STEPS];
 uint8_t remoteStepArg[REMOTE_MAX_STEPS];
 int remoteStepCount = 0;
@@ -106,11 +114,11 @@ void remoteSetEnabled(bool on) {
 }
 
 // May the phone press this button (1 ENTER, 2 UP, 3 RIGHT, 4 DOWN, 5 LEFT) on the screen that is open now?
-//  - Reboot, Time Zone, IR Send: only LEFT (to back out). They restart the unit, change settings or send IR codes.
+//  - Reboot, Time Zone, Declination, Live Audio, IR Send: only LEFT (to back out). They restart the unit, change settings or send IR codes.
 //    (IR Receive allows every button: it only listens, and cloning is how the phone's IR keys get their codes.)
 //  - Bluetooth screen: UP, DOWN and LEFT. ENTER and RIGHT would switch Bluetooth / remote control off.
 bool remoteButtonAllowed(int button) {
-  if (currentState == REBOOT || currentState == TIMEZONE || currentState == IRSEND) {
+  if (currentState == REBOOT || currentState == TIMEZONE || currentState == DECLINATION_SETUP || currentState == AUDIO_STREAM || currentState == IRSEND) {
     return button == 5;
   }
   if (currentState == BLUETOOTH_SCREEN) {
@@ -148,7 +156,7 @@ bool remoteLocate(int screenId, int* category, int* item) {
     case 12: *category = 2; *item = 2; return true;   // IR Receive (only listens)
     case 7:  *category = 4; *item = 0; return true;   // Battery
     case 8:  *category = 4; *item = 1; return true;   // System Info
-    default: return false;                            // Time Zone, Reboot, Bluetooth: never opened remotely
+    default: return false;                            // Time Zone, Declination, Reboot, Bluetooth: never opened remotely
   }
 }
 
@@ -222,6 +230,24 @@ void remoteHandleCommand(const uint8_t* d, int n) {
   } else if (d[0] == REMOTE_CMD_TZ) {
     if (!tzApplyFromPhone(d[1])) { remoteLog("ignored: no such time zone", d, n); return; }
     remoteLog("accepted: time zone changed", d, n);
+  } else if (d[0] == REMOTE_CMD_DECL) {
+    if (n < 3) { remoteLog("ignored: too short", d, n); return; }
+    int x100 = (int)(int16_t)(uint16_t)(d[1] | ((uint16_t)d[2] << 8));
+    if (!declinationApplyFromPhone(x100)) { remoteLog("ignored: declination out of range (-45 to +45 degrees)", d, n); return; }
+    remoteLog("accepted: declination changed", d, n);
+  } else if (d[0] == REMOTE_CMD_AUDIO) {
+    if (d[1] == 0) {
+      if (currentState != AUDIO_STREAM) { remoteLog("nothing to do: the live audio is not on", d, n); return; }
+      micStreamStopFromPhone();
+      remoteLog("accepted: live audio stopping", d, n);
+    } else {
+      if (remoteLeaveBlocked()) { remoteLog("ignored: finish or cancel what is open on IR Receive first", d, n); return; }
+      if (currentState == AUDIO_STREAM) { remoteLog("nothing to do: the live audio is already on", d, n); return; }
+      remoteBuildGoto(0);                                  // back out to the main menu (does nothing if it is there already)
+      remoteAddStep(5, 0);                                 // then open the Live Audio screen
+      remoteNextMs = millis();
+      remoteLog("accepted: live audio starting", d, n);
+    }
   } else if (d[0] == REMOTE_CMD_REBOOT) {
     if (n < 4 || d[1] != 0x52 || d[2] != 0x42 || d[3] != 0x54) { remoteLog("ignored: a reboot needs the confirmation bytes 52 42 54", d, n); return; }
     remoteLog("accepted: rebooting now", d, n);
@@ -273,6 +299,10 @@ int remoteApply(int pressType, int rawButton) {
     irSendCursor = arg;                                     // select the option ...
     lastButton = 1;                                         // ... and press ENTER, in one step so that quick
     return SHORT_PRESS;                                     //     successive taps can't cut each other short
+  }
+  if (kind == 5) {                                          // open the Live Audio screen
+    micStreamStartFromPhone();
+    return pressType;
   }
   if (kind == 2) {
     mainMenuCursor = arg;

@@ -42,31 +42,21 @@ void swReset() {
 
 void swDrawOled() {
   char line[28];
-  char a[12], b[12];
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 9);
-  display.print(F("STOPWATCH"));
-  display.setCursor(84, 9);
-  display.print(swRunning ? "RUNNING" : (swElapsed() > 0 ? "STOPPED" : "READY"));
+  char a[12];
+  display.clearDisplay();                                      // (LCARS look, see LcarsOled.ino)
+  lcoFrame("STOPWATCH", swRunning ? "RUN" : (swElapsed() > 0 ? "STOP" : "READY"));
 
-  // the most recent 4 laps, newest at the bottom
+  // the most recent 4 laps, newest at the bottom: number, lap time, total in minutes and seconds
   int first = (swLapCount > 4) ? swLapCount - 4 : 0;
   for (int i = first; i < swLapCount; i++) {
     unsigned long split = swLapTotals[i] - (i > 0 ? swLapTotals[i - 1] : 0UL);
     swFormat(split, a, sizeof(a));
-    swFormat(swLapTotals[i], b, sizeof(b));
-    snprintf(line, sizeof(line), "L%02d %s %s", i + 1, a, b);
-    display.setCursor(0, 20 + (i - first) * 8);
-    display.print(line);
+    unsigned long totalSecs = swLapTotals[i] / 1000UL;
+    snprintf(line, sizeof(line), "%2d %s %02lu:%02lu", i + 1, a, totalSecs / 60UL, totalSecs % 60UL);
+    lcoText(i - first, line);
   }
-  if (swLapCount == 0) {
-    display.setCursor(0, 28);
-    display.print(F("No laps yet"));
-  }
-  display.setCursor(0, 55);
-  display.print(F("E:Run/Stop R:Lap D:Clr"));
+  if (swLapCount == 0) lcoText(1, "NO LAPS YET");
+  lcoText(4, "E=RUN R=LAP D=CLR");
   display.display();
 }
 

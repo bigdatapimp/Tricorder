@@ -139,91 +139,59 @@ void SystemInfo(int pressType) {
     tftTextDiff(shownHeap, 38, 53, 1, padded, lcPeach(), BLACK);
   }
 
-  // --- OLED ---
+  // --- OLED (LCARS look, see LcarsOled.ino): the page in the tag, a label block for every value ---
+  char tag[8];
+  snprintf(tag, sizeof(tag), "%d/%d", page + 1, SYSINFO_PAGES);
   display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 9);
-  display.print(F("SYSTEM INFO"));
-  display.setCursor(104, 9);
-  display.print(page + 1);
-  display.print(F("/"));
-  display.print(SYSINFO_PAGES);
+  lcoFrame("SYSTEM INFO", tag);
 
   char line[24];
 
   if (page == 0) {
     // ---- Memory and uptime ----
-    display.setCursor(0, 20);
-    snprintf(line, sizeof(line), "Heap free:%4lu KB", (unsigned long)(freeBytes / 1024UL));
-    display.print(line);
-
-    display.setCursor(0, 30);
-    snprintf(line, sizeof(line), "of RAM:   %4d %%", pct);
-    display.print(line);
-
+    snprintf(line, sizeof(line), "%lu KB FREE", (unsigned long)(freeBytes / 1024UL));
+    lcoRow(0, "HEAP", line);
+    snprintf(line, sizeof(line), "%d %% OF RAM", pct);
+    lcoRow(1, "RAM", line);
     unsigned long secs = now / 1000UL;
     unsigned long d = secs / 86400UL;
     unsigned long h = (secs / 3600UL) % 24UL;
     unsigned long m = (secs / 60UL) % 60UL;
     unsigned long s = secs % 60UL;
-    display.setCursor(0, 40);
-    snprintf(line, sizeof(line), "Up: %lud %02lu:%02lu:%02lu", d, h, m, s);
-    display.print(line);
-
-    display.setCursor(0, 50);
-    snprintf(line, sizeof(line), "Loop: %lu /s", loopsPerSec);
-    display.print(line);
+    snprintf(line, sizeof(line), "%lud %02lu:%02lu:%02lu", d, h, m, s);
+    lcoRow(2, "UP", line);
+    snprintf(line, sizeof(line), "%lu /s", loopsPerSec);
+    lcoRow(3, "LOOP", line);
 
   } else if (page == 1) {
     // ---- GPS health ----
-    display.setCursor(0, 20);
-    display.print(F("Sats:"));
-    if (gps.satellites.isValid()) display.print((int)gps.satellites.value()); else display.print(F("--"));
-    display.print(F("  HDOP:"));
-    if (gps.hdop.isValid()) display.print(gps.hdop.hdop(), 1); else display.print(F("--"));
-
-    display.setCursor(0, 30);
-    display.print(F("Fix: "));
-    if (gps.location.isValid()) {
-      display.print(F("Yes  Age:"));
-      display.print(gps.location.age() / 1000UL);
-      display.print(F("s"));
-    } else {
-      display.print(F("No"));
-    }
-
-    display.setCursor(0, 40);
-    snprintf(line, sizeof(line), "NMEA chars:%lu", (unsigned long)gps.charsProcessed());
-    display.print(line);
-
-    display.setCursor(0, 50);
-    snprintf(line, sizeof(line), "Bad cksum:%lu", (unsigned long)gps.failedChecksum());
-    display.print(line);
+    if (gps.satellites.isValid()) snprintf(line, sizeof(line), "%d", (int)gps.satellites.value());
+    else                          snprintf(line, sizeof(line), "--");
+    lcoRow(0, "SATS", line);
+    if (gps.hdop.isValid()) snprintf(line, sizeof(line), "%.1f", gps.hdop.hdop());
+    else                    snprintf(line, sizeof(line), "--");
+    lcoRow(1, "HDOP", line);
+    if (gps.location.isValid()) snprintf(line, sizeof(line), "YES  AGE %lus", (unsigned long)(gps.location.age() / 1000UL));
+    else                        snprintf(line, sizeof(line), "NO");
+    lcoRow(2, "FIX", line);
+    snprintf(line, sizeof(line), "%lu", (unsigned long)gps.charsProcessed());
+    lcoRow(3, "NMEA", line);
+    snprintf(line, sizeof(line), "%lu", (unsigned long)gps.failedChecksum());
+    lcoRow(4, "BAD", line);
 
   } else {
     // ---- Device ----
-    display.setCursor(0, 20);
-    display.print(F("FW v"));
-    display.print(FWver, 2);
-    display.print(F("  nRF52840"));
-
-    display.setCursor(0, 30);
-    snprintf(line, sizeof(line), "RAM %luK Flash %dK", SYS_RAM_BYTES / 1024UL, SYS_FLASH_KB);
-    display.print(line);
-
-    display.setCursor(0, 40);
-    display.print(F("ID:"));
+    snprintf(line, sizeof(line), "v%.2f nRF52840", FWver);
+    lcoRow(0, "FW", line);
+    snprintf(line, sizeof(line), "%luK / %dK", SYS_RAM_BYTES / 1024UL, SYS_FLASH_KB);
+    lcoRow(1, "MEM", line);
 #ifdef NRF_FICR
     snprintf(line, sizeof(line), "%08lX%08lX", (unsigned long)NRF_FICR->DEVICEID[1], (unsigned long)NRF_FICR->DEVICEID[0]);
-    display.print(line);
 #else
-    display.print(F("n/a"));
+    snprintf(line, sizeof(line), "n/a");
 #endif
-
-    display.setCursor(0, 50);
-    display.print(F("Built:"));
-    display.print(__DATE__);
+    lcoRow(2, "ID", line);
+    lcoRow(3, "BUILT", __DATE__);
   }
 
   display.display();

@@ -96,3 +96,134 @@ void lcoDrawMenu(const char* title, const char* const* names, int count, int cur
 void lcoDrawMainMenu() {
   lcoDrawMenu("MAIN MENU", lcMainNames, 5, mainMenuCursor);
 }
+
+// ---- rows of text, blocks and whole screens ----
+// The content lines are 9 pixels apart from y = 18 (rows 0 to 4). Text is at most 19 characters a line.
+
+int lcoRowY(int row) {
+  return LCO_CONTENT_Y + 9 * row;
+}
+
+// A line of text in a row
+void lcoText(int row, const char* text) {
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(LCO_CONTENT_X, lcoRowY(row));
+  display.print(text);
+}
+
+// Text at any position, cut to 'maxChars' characters
+void lcoTextAt(int x, int y, const char* text, int maxChars) {
+  char buf[32];
+  if (maxChars > 30) maxChars = 30;
+  strncpy(buf, text, maxChars);
+  buf[maxChars] = '\0';
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(x, y);
+  display.print(buf);
+}
+
+// A row with a solid label block and its value after it
+void lcoRow(int row, const char* label, const char* value) {
+  int w = 6 * (int)strlen(label) + 6;
+  lcoPill(LCO_CONTENT_X, lcoRowY(row), w, 8, label);
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(LCO_CONTENT_X + w + 4, lcoRowY(row));
+  display.print(value);
+}
+
+// A wide block across the content area, solid with black letters or hollow with white ones
+void lcoBlock(int y, int h, const char* text, bool solid) {
+  if (solid) lcoPill(LCO_CONTENT_X, y, 118, h, text);
+  else       lcoOutline(LCO_CONTENT_X, y, 118, h, text);
+}
+
+// Text wrapped at the spaces into lines of at most 'maxChars' characters, at most 'maxRows' of them, 9 pixels apart from (x, y)
+int lcoWrap(int x, int y, int maxChars, int maxRows, const char* text) {
+  char line[24];
+  int n = 0, rows = 0;
+  if (maxChars > 20) maxChars = 20;
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  const char* p = text;
+  while (*p != '\0' && rows < maxRows) {
+    while (*p == ' ') p++;
+    if (*p == '\0') break;
+    int len = 0;
+    while (p[len] != '\0' && p[len] != ' ') len++;
+    int rest = len;
+    if (len > maxChars) len = maxChars;
+    if (n > 0 && n + 1 + len > maxChars) {
+      line[n] = '\0';
+      display.setCursor(x, y + rows * 9);
+      display.print(line);
+      rows++;
+      n = 0;
+      if (rows >= maxRows) return rows;
+    }
+    if (n > 0) line[n++] = ' ';
+    for (int i = 0; i < len; i++) line[n++] = p[i];
+    p += rest;
+  }
+  if (n > 0 && rows < maxRows) {
+    line[n] = '\0';
+    display.setCursor(x, y + rows * 9);
+    display.print(line);
+    rows++;
+  }
+  return rows;
+}
+
+// A message screen: the header and up to five lines of text (NULL for none)
+void lcoMessage(const char* title, const char* tag, const char* l1, const char* l2, const char* l3, const char* l4, const char* l5) {
+  display.clearDisplay();
+  lcoFrame(title, tag);
+  const char* lines[5] = {l1, l2, l3, l4, l5};
+  for (int i = 0; i < 5; i++) {
+    if (lines[i] != NULL) lcoText(i, lines[i]);
+  }
+  display.display();
+}
+
+// A screen with one wide block in the middle: solid or hollow
+void lcoBlockScreen(const char* title, const char* tag, const char* text, bool solid) {
+  display.clearDisplay();
+  lcoFrame(title, tag);
+  lcoBlock(28, 14, text, solid);
+  display.display();
+}
+
+// The start-up screen: "POWERING ON" with a bar that fills over 'totalMs' milliseconds (this replaces the delay)
+void lcoPowerOn(const char* version, unsigned long totalMs) {
+  const int segs = 22;
+  for (int i = 0; i <= segs; i++) {
+    display.clearDisplay();
+    lcoFrame("TRICORDER", version);
+    lcoBlock(22, 12, "POWERING ON", true);
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(LCO_CONTENT_X + (118 - 6 * 8) / 2, 39);
+    display.print("STAND BY");
+    lcoBar(LCO_CONTENT_X, 52, segs, i, 3, 7, 5);
+    display.display();
+    delay(totalMs / (segs + 1));
+  }
+}
+
+// A calibration screen: the tag says what is being calibrated, up to three lines of text, a progress bar (0 to 100 percent)
+// and a line under it
+void lcoCalibrating(const char* tag, const char* l1, const char* l2, const char* l3, int percent, const char* bottom) {
+  display.clearDisplay();
+  lcoFrame("CALIBRATING", tag);
+  if (l1 != NULL) lcoText(0, l1);
+  if (l2 != NULL) lcoText(1, l2);
+  if (l3 != NULL) lcoText(2, l3);
+  int lit = percent * 22 / 100;
+  if (lit < 0) lit = 0;
+  if (lit > 22) lit = 22;
+  lcoBar(LCO_CONTENT_X, 46, 22, lit, 3, 5, 5);
+  if (bottom != NULL) lcoTextAt(LCO_CONTENT_X, 54, bottom, 19);
+  display.display();
+}

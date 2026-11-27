@@ -100,10 +100,12 @@ enum State {
   SYSINFO,
   REBOOT,
   TIMEZONE,
+  DECLINATION_SETUP,
   SHOTTIMER,
   STOPWATCH,
   COUNTDOWNTIMER,
-  BLUETOOTH_SCREEN
+  BLUETOOTH_SCREEN,
+  AUDIO_STREAM
 };
 
 // --- Menu options ---
@@ -246,22 +248,16 @@ void setup() {
   //--- Set Time Zone ---
   tzLoad();
 
+  //--- Set Compass Declination ---
+  declinationLoad();
+
   // --- Splash Screen - Screen 2---
     char splashVersion[8];
   snprintf(splashVersion, sizeof(splashVersion), "v%.1f", FWver);
   lcSplash(splashVersion, "By Tony Dillberg");
 
   // --- Splash Screen - Screen 1---
-  display.setCursor(0, 8);
-  display.println(" ___________________");
-  display.setCursor(30, 16);
-  display.println("POWERING ON");
-  display.setCursor(40, 30);
-  display.println("Stand By");
-  display.setCursor(0, 33);
-  display.println(" ___________________");
-  display.display();
-  delay(3500);
+  lcoPowerOn("v0.6", 3500);
 
   // clear Screen 2
   tft.fillScreen(BLACK);
@@ -339,6 +335,9 @@ void loop() {
     case SPECTRUM:
       SpectrumAnalyzer(pressType);
       break;
+    case AUDIO_STREAM: 
+      AudioStreamScreen(pressType);
+      break;
     case IRRECEIVER:
       //tft.fillScreen(BLACK);
       irReceiver(pressType);
@@ -372,6 +371,10 @@ void loop() {
     case TIMEZONE:
       TimeZoneSetup(pressType);
       break;
+    case DECLINATION_SETUP:
+      DeclinationSetup(pressType);
+      break;
+
   }
 }
 
@@ -381,7 +384,7 @@ void handleMainMenu(int pressType) {
     lcoDrawMainMenu();
     menuDirty = false;
   }
-  
+
   displayGPSClock();  // cheap: only touches the TFT when the GPS time actually changed
 
   if (pressType == SHORT_PRESS) {

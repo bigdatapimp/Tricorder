@@ -97,14 +97,17 @@ void EMFMeter(int pressType) {
     snprintf(buf, sizeof(buf), "%5.1f", digits);
     tftTextDiff(shown, 9, 10, 2, buf, lcPeach(), BLACK);
 
-    // --- OLED: the title and the reading ---
+    // --- OLED (LCARS look, see LcarsOled.ino): the reading in big digits and what to expect ---
     display.clearDisplay();
-    display.setCursor(0, 9);
-    display.println(F("EMF Meter"));
-    display.setCursor(0, 20);
-    display.print(F("EMF: "));
-    display.print(emfMagnitude, 1);
-    display.println(F(" uT"));
+    lcoFrame("EMF METER", NULL);
+    lcoPill(9, 20, 36, 8, "FIELD");
+    char big[16];
+    snprintf(big, sizeof(big), "%.1f uT", (emfMagnitude > 999.9) ? 999.9 : emfMagnitude);
+    display.setTextSize(2);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(9, 31);
+    display.print(big);
+    lcoTextAt(9, 53, "EARTH: 25 TO 65 uT", 19);
     display.display();
   }
 }

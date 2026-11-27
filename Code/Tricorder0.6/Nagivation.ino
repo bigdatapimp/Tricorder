@@ -1,8 +1,9 @@
 // ----------- Navigation code ---------
 //
 // 
-// The heading shown is the compass's magnetic heading plus DECLINATION (set in the main sketch: east is positive, west
-// negative; the pure magnetic declination for where you are). COMPASS_TRIM is for anything left over after that, such as
+// The heading shown is the compass's magnetic heading plus the declination (east is positive, west negative; the pure magnetic
+// declination for where you are). It is set at SYSTEM > DECLINATION (Declination.ino), which starts from DECLINATION in the main
+// sketch when nothing has been saved. COMPASS_TRIM is for anything left over after that, such as
 // the board not sitting exactly square in its case: positive turns the heading clockwise. It stays 0.0 unless a check
 // against a known direction (for example the GPS course on a straight road) shows the compass is still off.
 #ifndef COMPASS_TRIM
@@ -90,6 +91,15 @@ void navDrawCalibrating() {
   tft.print("CALIBRATING");
   tft.setCursor(8 + (88 - 54) / 2, 40);
   tft.print("TUMBLE IT");
+}
+
+// One row of the OLED: a label block 30 pixels wide at row 0 to 4 (9 pixels apart from y = 18) and the cursor placed for its value
+// in a column at x = 43 (LCARS look, see LcarsOled.ino)
+void navOledLabel(int row, const char* label) {
+  lcoPill(9, 18 + 9 * row, 30, 8, label);
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(43, 18 + 9 * row);
 }
 
 void Navigation(int pressType) {
@@ -203,7 +213,7 @@ void Navigation(int pressType) {
       float fE = FWD_X * ex + FWD_Y * ey + FWD_Z * ez;
       float fN = FWD_X * nx + FWD_Y * ny + FWD_Z * nz;
       float heading = atan2(fE, fN) * 180.0 / PI;
-      heading += DECLINATION + COMPASS_TRIM;     // true heading: magnetic heading + declination (east positive)
+      heading += declinationNow() + COMPASS_TRIM;     // true heading: magnetic heading + declination (east positive)
       while (heading < 0) heading += 360.0;
       while (heading >= 360.0) heading -= 360.0;
 
@@ -288,13 +298,10 @@ void Navigation(int pressType) {
   if (millis() - lastOledMs >= 250) {
     lastOledMs = millis();
 
-    display.clearDisplay();
-    lcoFrame("NAVIGATE", coordFormat == 0 ? "DEC" : (coordFormat == 1 ? "DMS" : "MGRS"));     // (LCARS look, see LcarsOled.ino)
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
+    display.clearDisplay();                                        // (LCARS look, see LcarsOled.ino)
+    lcoFrame("NAVIGATE", coordFormat == 0 ? "DEC" : (coordFormat == 1 ? "DMS" : "MGRS"));
 
     // --- GPS Coordinates ---
-    display.setCursor(9, 19);
     if (gps.location.isValid()) {
       if (coordFormat == 2) {
         // --- MGRS Format (WGS84, 1 m) ---
@@ -305,94 +312,78 @@ void Navigation(int pressType) {
           mgrsLastLng = lng;
           mgrsValid = mgrsFromLatLon(lat, lng, &mgrsZone, &mgrsBand, &mgrsCol, &mgrsRow, &mgrsE, &mgrsN);
         }
+        navOledLabel(0, "GRID");
         if (mgrsValid) {
-          display.print("MGRS: ");
           display.print(mgrsZone);
           display.print(mgrsBand);
           display.print(" ");
           display.print(mgrsCol);
-          display.println(mgrsRow);
+          display.print(mgrsRow);
 
-          display.setCursor(9, 28);
+          navOledLabel(1, "E/N");
           char mgrsLine[16];
           snprintf(mgrsLine, sizeof(mgrsLine), "%05ld %05ld", mgrsE, mgrsN);
           display.print(mgrsLine);
         } else {
-          display.println("MGRS: n/a (polar)");
+          display.print("n/a (polar)");
         }
       } else if (coordFormat == 1) {
         // --- DMS Format ---
+        char dms[20];
         int lat_deg = abs(gps.location.rawLat().deg);
         double lat_min_full = gps.location.rawLat().billionths / 1000000000.0 * 60.0;
         int lat_min = (int)lat_min_full;
         double lat_sec = (lat_min_full - lat_min) * 60.0;
         char lat_dir = gps.location.rawLat().negative ? 'S' : 'N';
+        snprintf(dms, sizeof(dms), "%d%c%d'%.1f\"%c", lat_deg, (char)247, lat_min, lat_sec, lat_dir);
+        navOledLabel(0, "LAT");
+        display.print(dms);
 
-        display.print("Lat:");
-        display.print(lat_deg);
-        display.print((char)247);
-        display.print(lat_min);
-        display.print("'");
-        display.print(lat_sec, 1);
-        display.print("''");
-        display.println(lat_dir);
-
-        display.setCursor(9, 28);
         int lon_deg = abs(gps.location.rawLng().deg);
         double lon_min_full = gps.location.rawLng().billionths / 1000000000.0 * 60.0;
         int lon_min = (int)lon_min_full;
         double lon_sec = (lon_min_full - lon_min) * 60.0;
         char lon_dir = gps.location.rawLng().negative ? 'W' : 'E';
-
-        display.print("Lon:");
-        display.print(lon_deg);
-        display.print((char)247);
-        display.print(lon_min);
-        display.print("'");
-        display.print(lon_sec, 1);
-        display.print("''");
-        display.println(lon_dir);
+        snprintf(dms, sizeof(dms), "%d%c%d'%.1f\"%c", lon_deg, (char)247, lon_min, lon_sec, lon_dir);
+        navOledLabel(1, "LON");
+        display.print(dms);
       } else {
         // --- Decimal Degrees Format ---
-        display.print("Lat: ");
-        display.println(gps.location.lat(), 5);
-
-        display.setCursor(9, 28);
-        display.print("Lon: ");
-        display.println(gps.location.lng(), 5);
+        navOledLabel(0, "LAT");
+        display.print(gps.location.lat(), 5);
+        navOledLabel(1, "LON");
+        display.print(gps.location.lng(), 5);
       }
 
       // --- GPS Altitude ---
-      display.setCursor(9, 37);
-      display.print("GPS Alt:");
+      navOledLabel(2, "GPS");
       if (useFeet) {
         display.print((int)gps.altitude.feet());
-        display.println("ft");
+        display.print(" ft");
       } else {
         display.print((int)gps.altitude.meters());
-        display.println("m");
+        display.print(" m");
       }
     } else {
-      display.println("GPS: No Fix");
+      lcoOutline(9, 18, 118, 8, "NO GPS FIX");
     }
 
     // --- Barometric Altitude ---
-    display.setCursor(9, 46);
-    display.print("Baro Alt:");
+    navOledLabel(3, "BARO");
     float pressure = BARO.readPressure(MILLIBAR);
     float baro_alt_ft = 44330.0 * (1.0 - pow(pressure / 1013.25, 1.0 / 5.255)) * 3.28084;
 
     if (useFeet) {
       display.print((int)baro_alt_ft);
-      display.print("ft");
+      display.print(" ft");
     } else {
       display.print((int)(baro_alt_ft / 3.28084));
-      display.print("m");
+      display.print(" m");
     }
 
     // --- Level indicator: a solid LVL block, or a hollow TLT one when the device is tilted ---
-    if (isLevel) lcoPill(9, 55, 24, 8, "LVL");
-    else         lcoOutline(9, 55, 24, 8, "TLT");
+    if (isLevel) lcoPill(9, 54, 30, 8, "LVL");
+    else         lcoOutline(9, 54, 30, 8, "TLT");
 
     display.display();
   }

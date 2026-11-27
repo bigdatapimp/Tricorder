@@ -486,16 +486,10 @@ void IrSend(int pressType) {
     if (irSlotAvailable(irSendCursor)) {
       irSendDrawSending(irSendCursor, true);
       irSendSlot(irSendCursor);
-      display.clearDisplay();
-      display.setCursor(0, 20);
-      display.println("Signal Sent!");
-      display.display();
+      lcoBlockScreen("IR SEND", NULL, "SIGNAL SENT", true);
     } else {                                          // a button that was skipped when cloning, or that has no default
       irSendDrawSending(irSendCursor, false);
-      display.clearDisplay();
-      display.setCursor(0, 20);
-      display.println("Not assigned");
-      display.display();
+      lcoBlockScreen("IR SEND", NULL, "NOT ASSIGNED", false);
     }
     delay(500);
     lastIrSendCursor = -1;
@@ -522,30 +516,27 @@ void IrSend(int pressType) {
   // --- Only update display if something changed ---
   if (irSendCursor != lastIrSendCursor) {
 
-    // --- Draw to SSD1306 (three columns of six). A code that is not assigned is drawn dimmed. ---
+    // --- Draw to SSD1306 (LCARS look, see LcarsOled.ino): three columns of six, the selected button a solid block. A code that
+    // is not assigned is drawn dimmed. ---
     display.clearDisplay();
-    display.setTextSize(0);
-    display.setCursor(0, 0);
+    lcoFrame("IR SEND", irCodeSetName());
+    display.setTextSize(1);
 
     for (int i = 0; i < IR_SLOTS; i++) {
       int col = i / 6;
       int row = i % 6;
-      int xPos = col * 42;                            // screen width 128: 42 pixels per column
-      int yPos = 9 + (row * 9);
-
-      display.setCursor(xPos, yPos);
+      int xPos = 9 + col * 40;                 // three columns of 38 pixels
+      int yPos = 16 + row * 8;                             // six rows of 8, from just under the header to the bottom
 
       if (i == irSendCursor) {
-        display.print(F(">"));
-        display.setTextColor(BLACK);
-        display.fillRect(xPos, yPos - 1, 42, 9, SSD1306_WHITE);
+        display.fillRoundRect(xPos, yPos, 38, 8, 2, SSD1306_WHITE);
+        display.setTextColor(SSD1306_BLACK);
       } else {
-        display.print(F(" "));
         display.setTextColor(SSD1306_WHITE);
       }
-
-      display.println(irSlotLabels[i]);
-      if (!irSlotAvailable(i)) irDimBox(xPos, yPos - 1, 42, 9);
+      display.setCursor(xPos + 2, yPos);
+      display.print(irSlotLabels[i]);
+      if (!irSlotAvailable(i)) irDimBox(xPos, yPos, 38, 8);
     }
 
     display.setTextColor(SSD1306_WHITE);

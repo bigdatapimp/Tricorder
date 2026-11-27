@@ -1,4 +1,4 @@
-# Tricorder BLE Protocol, version 8
+# Tricorder BLE Protocol, version 10
 
 This is the contract between the Tricorder firmware (`Bluetooth.ino`) and any phone app. If either side changes
 it, change this document first.
@@ -24,8 +24,9 @@ two's complement.
 | Environment | `3f5a0001-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 12 bytes |
 | Position | `3f5a0002-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 20 bytes |
 | Device | `3f5a0003-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 20 bytes (19 in protocol v6 and v7, 16 in v5) |
-| Motion | `3f5a0004-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 10 bytes |
+| Motion | `3f5a0004-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 12 bytes (10 in protocol v8 and older) |
 | Sound | `3f5a0005-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 10 bytes |
+| Audio | `3f5a000e-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 20 bytes, notify only (protocol v10) |
 | Spectrum | `3f5a0006-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 20 bytes |
 | Fields | `3f5a0007-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 12 bytes |
 | Shot | `3f5a0008-7c2b-4e6d-a1b3-5d8e9c0f1a20` | 10 bytes |
@@ -81,13 +82,13 @@ Trust a field only when its flag bit is set. Latitude/longitude: divide by 10,00
 | 3 | uint8 | active screen id | see below |
 | 4 | uint32 | device uptime | ms |
 | 8 | uint32 | largest free memory block | bytes |
-| 12 | uint8 | protocol version | currently 8 |
+| 12 | uint8 | protocol version | currently 10 |
 | 13 | uint8 | flags | bit 0 remote control is switched on at the Tricorder, bit 1 the Tricorder is still carrying out the last remote command, bit 2 remote control is on but the sketch's `loop()` never applies the commands (the `remoteApply()` line is missing), bit 3 the time zone in use is saved in flash (otherwise it is lost at power-off; protocol v8) |
 | 14 | uint16 | firmware version x 1000 | 600 = firmware 0.6; `0xFFFF` = unknown |
 | 16 | uint24 | IR codes that exist (protocol v6) | bit n set = IR code n (see Remote control) has a code on the Tricorder. A key whose bit is clear should be greyed out. Bits 0-11 are set until a remote is cloned; bits 12-16 (Eject, Play, Stop, Pause, Menu) are clear until then. A protocol v5 Tricorder sends only the first 16 bytes: treat codes 0-11 as present and the rest as absent. |
 | 19 | uint8 | time zone in use (protocol v8) | 0 Eastern, 1 Central, 2 Mountain, 3 Arizona (no DST), 4 Pacific, 5 Alaska, 6 Hawaii (no DST). A v6 or v7 Device packet is 19 bytes long and has no time zone. |
 
-### Motion (10 bytes)
+### Motion (12 bytes)
 
 Compass values, as the Tricorder's Navigation screen shows them (declination included).
 
@@ -98,6 +99,10 @@ Compass values, as the Tricorder's Navigation screen shows them (declination inc
 | 4 | int16 | roll | 0.1 degrees | `0x8000` |
 | 6 | uint16 | magnetic field strength (calibrated) | 0.1 uT | `0xFFFF` |
 | 8 | uint8 | flags | bit 0 held level, bit 1 values valid, bit 2 magnetometer calibrated, bit 3 **live** | |
+| 9 | uint8 | flags 2 (protocol v9) | bit 0 the declination is saved in flash (otherwise it is lost at power-off) | |
+| 10 | int16 | compass declination in use (protocol v9), east positive | 0.01 degrees, -4500 to 4500 | `0x8000` |
+
+A protocol v8 or older Motion packet is 10 bytes long and has neither field (byte 9 was reserved, 0).
 | 9 | uint8 | reserved | always 0 | |
 
 ### Sound (10 bytes)
@@ -242,7 +247,7 @@ exactly as if the button had been pressed on the device.
 
 | Byte | Meaning |
 |---|---|
-| 0 | command: 1 = BUTTON, 2 = GOTO, 3 = IR, 4 = IR RECEIVE (protocol v7), 5 = TIME ZONE, 6 = REBOOT (protocol v8) |
+| 0 | command: 1 = BUTTON, 2 = GOTO, 3 = IR, 4 = IR RECEIVE (protocol v7), 5 = TIME ZONE, 6 = REBOOT (protocol v8), 7 = DECLINATION (protocol v9), 8 = LIVE AUDIO (protocol v10) |
 | 1 | BUTTON: button, 1 ENTER, 2 UP, 3 RIGHT, 4 DOWN, 5 LEFT. GOTO: screen id (0 = the main menu). IR: the code number (0-16, below). IR RECEIVE: the action, 1 start a clone, 2 open the IR data view, 3 back to the IR Receive menu. TIME ZONE: the zone 0-6 (see the Device packet). REBOOT: `0x52` |
 | 2 | BUTTON: 0 = short press, 1 = long press. REBOOT: `0x42`. Otherwise 0 |
 | 3 | REBOOT: `0x54`. Otherwise 0 |
@@ -255,11 +260,19 @@ exactly as if the button had been pressed on the device.
 - **Safety.** Remote control is **off** every time the Tricorder starts. The user switches it on at the Tricorder
   (COMMS menu > Bluetooth, RIGHT), and it switches off when Bluetooth is turned off. While it is off, commands are
   silently ignored. The Device packet's flag bit 0 says whether it is on.
-- The phone can never GOTO the Reboot, Time Zone and Bluetooth screens. On Reboot, Time Zone and IR Send only a LEFT
+- The phone can never GOTO the Reboot, Time Zone, Declination and Bluetooth screens. On Reboot, Time Zone, Declination and IR Send only a LEFT
   press (to back out) is accepted from a BUTTON command.
 - **TIME ZONE** (command 5) sets the zone the Tricorder uses for its GPS clock, exactly as ENTER does on its Time Zone
   screen (it is saved to flash if the core allows; Device flag bit 3 says whether it was). A zone above 6 is ignored.
   It works whatever screen the Tricorder is on: the phone still cannot open the Time Zone screen itself.
+- **DECLINATION** (command 7) sets the compass declination the Tricorder adds to its heading, exactly as ENTER does on its
+  Declination screen (it is saved to flash if the core allows; Motion flags 2 bit 0 says whether it was). The command is
+  `07 lo hi 00`: bytes 1 and 2 are a signed 16-bit number (little endian) of hundredths of a degree, east positive. A value
+  outside -4500 to 4500 is ignored. It works whatever screen the Tricorder is on.
+- **LIVE AUDIO** (command 8) starts or stops the live microphone stream: `08 01 00 00` starts, `08 00 00 00` stops. The Tricorder
+  opens its LIVE AUDIO screen (screen id 18) and sends packets on the Audio characteristic until the phone says stop, LEFT is
+  pressed on the Tricorder, the phone disconnects, or remote control is switched off. The phone cannot press buttons on that screen
+  other than LEFT. The phone should ask for a short connection interval while it listens.
 - **REBOOT** (command 6) restarts the Tricorder. The command is `06 52 42 54` ("RBT"): a reboot command that does not
   carry all three confirmation bytes is ignored, so a stray or malformed write can never restart the unit. The link
   drops; after the restart Bluetooth and remote control are off again until they are switched on at the Tricorder.
@@ -310,7 +323,9 @@ Typical buttons on each screen (what the Tricorder's own buttons do there):
 | 5 | dB Meter | 14 | Stopwatch |
 | 6 | Spectrum | 15 | Countdown |
 | 7 | Battery | 16 | Bluetooth |
-| 8 | System Info | 255 | anything else |
+| 8 | System Info | 17 | Declination |
+| | | 18 | Live Audio |
+| | | 255 | anything else |
 
 ## Example packets (for checking what the phone shows)
 
@@ -342,16 +357,17 @@ These are real outputs from the firmware's packing code for the inputs shown.
 
 - battery `0x0fac` = 4012 mV, 87 %, screen id 5 (dB Meter)
 - uptime `0xb2d05e00` = 3,000,000,000 ms, free block `0x0002bf20` = 180000 bytes
-- protocol version 8, flags `0x00` (remote control off, time zone not saved), firmware `0x0258` = 600 -> **0.6**
+- protocol version 9, flags `0x00` (remote control off, time zone not saved), firmware `0x0258` = 600 -> **0.6**
 - IR mask `0x000fff` -> codes 0-11 exist, 12-16 (Eject, Play, Stop, Pause, Menu) do not
 - time zone `0x01` -> **Central**
 
-**Motion**: `d2 04  e0 ff  2f 00  e3 01  0f  00`
+**Motion**: `d2 04  e0 ff  2f 00  e3 01  0f  01  58 01`
 
 - heading `0x04d2` = 1234 -> **123.4 degrees**
 - pitch `0xffe0` = -32 -> **-3.2 degrees**, roll `0x002f` = 47 -> **4.7 degrees**
 - field `0x01e3` = 483 -> **48.3 uT**
 - flags `0x0f`: held level, valid, calibrated, live
+- flags 2 `0x01`: the declination is saved; declination `0x0158` = 344 -> **+3.44 degrees** (east)
 
 **Sound**: `d3 02  aa 03  67 02  19 04  0d  00`
 
@@ -413,3 +429,20 @@ These are real outputs from the firmware's packing code for the inputs shown.
 5. Decode the bytes with the tables above. Change screens on the Tricorder and watch the Device packet's byte 3
    change.
 6. Disconnect in the app, then connect again, to confirm the Tricorder re-advertises.
+
+
+## Audio (protocol v10)
+Characteristic `3f5a000e-7c2b-4e6d-a1b3-5d8e9c0f1a20`, notify only, 20 bytes, about 250 packets a second while streaming (nothing
+otherwise). The sound is the Tricorder's microphone, 8 kHz mono, IMA ADPCM at 4 bits a sample.
+
+| Offset | Type | Field | Notes |
+|---|---|---|---|
+| 0 | uint8 | sequence number | counts up and wraps at 256; a jump means packets were lost or dropped |
+| 1 | int16 | predictor | the decoder's value before the first sample of this packet |
+| 3 | uint8 | step index | 0 to 88, the decoder's step index before the first sample |
+| 4 | 16 bytes | 32 samples | 4 bits each, the low nibble is the earlier sample |
+
+Because every packet carries its own predictor and step index, a decoder can start from any packet, and a lost packet only
+loses the 4 ms it held. Decoding of one sample (standard IMA ADPCM): `step = STEP[index]; vp = step>>3; if (code&4) vp += step;
+if (code&2) vp += step>>1; if (code&1) vp += step>>2; predictor += (code&8) ? -vp : vp` (clamped to int16), then
+`index += INDEX[code]` (clamped to 0..88), with the usual IMA tables (see `LiveAudio.kt` or `MicStream.ino`).

@@ -176,50 +176,48 @@ double shotSecs(uint32_t us) {
 
 void shotDrawOled() {
   char line[24];
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
+  display.clearDisplay();                                      // (LCARS look, see LcarsOled.ino)
 
   if (shotMode == ST_SETUP) {
     int pkPct = shotPeakHold * 100 / 32768;
     shotPeakHold = 0;
-    display.setCursor(0, 9);  display.print(F("SHOT TIMER"));
-    display.setCursor(0, 20); snprintf(line, sizeof(line), "Delay: %d s    (U/D)", shotDelaySec); display.print(line);
-    display.setCursor(0, 30); snprintf(line, sizeof(line), "Sens: %d/%d     (L/R)", shotSens, SHOT_SENS_LEVELS); display.print(line);
-    display.setCursor(0, 40); snprintf(line, sizeof(line), "Thr %2d%%    Pk %3d%%", shotThresholds[shotSens - 1] * 100 / 32768, pkPct); display.print(line);
-    display.setCursor(0, 52); display.print(F("ENTER = Start"));
+    lcoFrame("SHOT TIMER", "SETUP");
+    snprintf(line, sizeof(line), "%d s  U/D", shotDelaySec);
+    lcoRow(0, "DELAY", line);
+    snprintf(line, sizeof(line), "%d/%d  L/R", shotSens, SHOT_SENS_LEVELS);
+    lcoRow(1, "SENS", line);
+    snprintf(line, sizeof(line), "%d%%  PK %d%%", shotThresholds[shotSens - 1] * 100 / 32768, pkPct);
+    lcoRow(2, "THR", line);
+    lcoBlock(47, 10, "ENTER = START", true);
 
   } else if (shotMode == ST_COUNTDOWN) {
-    display.setCursor(0, 9);  display.print(F("SHOT TIMER"));
-    display.setCursor(0, 24); display.print(F("Get ready..."));
-    display.setCursor(0, 36); snprintf(line, sizeof(line), "Beep in %d s", shotShownRemain); display.print(line);
-    display.setCursor(0, 52); display.print(F("LEFT = Cancel"));
+    lcoFrame("SHOT TIMER", "READY");
+    lcoText(0, "GET READY...");
+    snprintf(line, sizeof(line), "%d s", shotShownRemain);
+    lcoRow(1, "BEEP IN", line);
+    lcoBlock(47, 10, "LEFT = CANCEL", false);
 
   } else if (shotMode == ST_RUN) {
-    display.setCursor(0, 9);  display.print(F("SHOT TIMER - TIMING"));
-    display.setCursor(0, 24); snprintf(line, sizeof(line), "Shots: %d", shotCount); display.print(line);
-    display.setCursor(0, 34);
-    if (shotCount > 0) snprintf(line, sizeof(line), "Last:  %.2f s", shotSecs(shotTimes[shotCount - 1]));
-    else snprintf(line, sizeof(line), "Last:  --");
-    display.print(line);
-    display.setCursor(0, 52); display.print(F("ENTER = Stop"));
+    lcoFrame("SHOT TIMER", "TIMING");
+    snprintf(line, sizeof(line), "%d", shotCount);
+    lcoRow(0, "SHOTS", line);
+    if (shotCount > 0) snprintf(line, sizeof(line), "%.2f s", shotSecs(shotTimes[shotCount - 1]));
+    else snprintf(line, sizeof(line), "--");
+    lcoRow(1, "LAST", line);
+    lcoBlock(47, 10, "ENTER = STOP", true);
 
   } else {   // results
-    display.setCursor(0, 9);
-    display.print(F(" #    Time   Split"));
-    if (shotCount == 0) {
-      display.setCursor(0, 28); display.print(F("No shots registered"));
-    }
+    lcoFrame("SHOTS", "TIME/SPLIT");
+    if (shotCount == 0) lcoText(1, "NO SHOTS REGISTERED");
     for (int r = 0; r < 4; r++) {
       int i = shotScroll + r;
       if (i >= shotCount) break;
       double t = shotSecs(shotTimes[i]);
       double s = (i == 0) ? t : shotSecs(shotTimes[i] - shotTimes[i - 1]);
-      display.setCursor(0, 20 + r * 8);
       snprintf(line, sizeof(line), "%2d %7.2f %7.2f", i + 1, t, s);
-      display.print(line);
+      lcoText(r, line);
     }
-    display.setCursor(0, 55); display.print(F("U/D Scroll  ENT=Again"));
+    lcoText(4, "U/D:SCROLL E:AGAIN");
   }
   display.display();
 }
