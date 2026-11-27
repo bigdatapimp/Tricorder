@@ -3,18 +3,19 @@ Current Version:  v0.6
 Updated with current version:
   BT comms to Phone (companion app updates)
   IR remote clone
-  Code Cleanup
+  General Code Cleanup
   UI Cleanup / Cosmetics
+  Option to set local compass declination
+  Remote Audio (With Companion App)
 
 Known Issues:
   Metal detector sensitivity
   EMF detector sensitivity
 
 Upcoming Additions / Changes:
-  Option to set local Compass Declination
   GPS point save
   GPS Navigation
   LED functions
   Seismometer   
   BT Scan
-  Remote Audio
+
